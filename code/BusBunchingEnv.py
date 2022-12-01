@@ -7,29 +7,36 @@ from simpy.events import AnyOf, AllOf, Event
 from params import *
 
 class Bus:
-    def __init__(self, env, name, starting_time) -> None:
+    def __init__(self, env, simpy_env, name, starting_time) -> None:
         self.env = env
+        self.simpy_env = simpy_env
         self.name = name
         self.capacity = CAPACITY
         self.cur_station = self.env.stations[0]
         self.next_station = self.cur_station.get_next()
-        yield env.timeout(starting_time)
-        print(f'Bus starts at {env.now}')
+        self.next_travel_time = self.env.get_travel_time(self.cur_station, self.next_station, self.simpy_env.now)
+        self.starting_time = starting_time
+        print(f'Bus {name} is successfully initialized.')
+        self.proc = self.simpy_env.process(self.drive())
 
     def drive(self):
+        yield self.simpy_env.timeout(self.starting_time)
+        print(f'Bus starts at {self.simpy_env.now}')
         while True:
             # drive till the next station
-            yield self.env.timeout(self.next_travel_time)
+            yield self.simpy_env.timeout(self.next_travel_time)
 
             # request to enter the station
             with self.next_station.request() as req:
                 yield req
-                print(f'Bus Arrives At Station {self.next_station.name}')
+                print(f'Bus {self.name} Arrives At Station {self.next_station.name}')
 
-                stopping_time = self.take_action(self)
-                yield self.env.timeout(stopping_time)
+                self.env.ready = True
+                stopping_time = self.take_action()
+                yield self.simpy_env.timeout(stopping_time)
+                print(f'Bus {self.name} holds for {stopping_time} seconds')
             
-            self.update_state(self)
+            self.update_state()
 
     def take_action(self):
         # decide holding time or skipping
@@ -38,46 +45,47 @@ class Bus:
     def update_state(self):
         self.cur_station = self.next_station
         self.next_station = self.cur_station.get_next()
-
+        self.next_travel_time = self.env.get_travel_time(self.cur_station, self.next_station, self.simpy_env.now)
 
 class Station:
     def __init__(self, 
                  simpy_env, 
+                 name,
                  arrival_rate: float,
                  alight_ratio: float) -> None:
         self.resource = simpy.Resource(simpy_env, capacity=1)
+        self.name = name
         self.last_station = None
         self.next_station = None
 
-    @classmethod
     def set_last(self, station):
         self.last_station = station
 
-    @classmethod
     def set_next(self, station):
         self.next_station = station
 
-    @classmethod
     def get_last(self):
         return self.last_station
 
-    @classmethod
     def get_next(self):
         return self.next_station
 
-    @classmethod
     def request(self):
         return self.resource.request()
 
 class Env:
-    def __init__(self, buses) -> None:
+    def __init__(self) -> None:
         #self.stations = [Station(self, arrival_rate, alight_ratio) for (arrival_rate, alight_ratio) in zip(ARRIVAL_RATES, ALIGHT_RATIOS)]
-        self.stations = [Station(self, 5, 5) for i in range(10)]
         self.travel_times = TRAVEL_TIMES
+        self.env = simpy.Environment()
+        self.stations = [Station(self.env, i, 5, 5) for i in range(10)]
+        self.arange_stations()
+        self.buses = [Bus(self, self.env, i, i*5) for i in range(8)]
+        self.ready = False
     
     def arange_stations(self) -> None:
         for index, station in enumerate(self.stations):
-            if index == len(self.stations):
+            if index == len(self.stations)-1:
                 station.set_next(self.stations[0])
             else:
                 station.set_next(self.stations[index+1])
@@ -88,7 +96,17 @@ class Env:
                 station.set_last(self.stations[index-1])
 
     def step(self, action):
-        pass
+        while not self.ready:
+            self.env.step()
+        print("Environment Step")
+        self.ready = False
+
+    @staticmethod
+    def get_travel_time(station1, station2, t):
+        return 10
 
 if __name__ == '__main__':
-    env = simpy.Environment()
+    env = Env()
+    while env.env.now < 500:
+        env.step(None)
+        print(f'Current time: {}')
