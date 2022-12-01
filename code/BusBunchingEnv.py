@@ -21,7 +21,7 @@ class Bus:
 
     def drive(self):
         yield self.simpy_env.timeout(self.starting_time)
-        print(f'Bus starts at {self.simpy_env.now}')
+        print(f'Bus {self.name} starts at {self.simpy_env.now}')
         while True:
             # drive till the next station
             yield self.simpy_env.timeout(self.next_travel_time)
@@ -32,6 +32,8 @@ class Bus:
                 print(f'Bus {self.name} Arrives At Station {self.next_station.name}')
 
                 self.env.ready = True
+                yield self.simpy_env.timeout(0)
+
                 stopping_time = self.take_action()
                 yield self.simpy_env.timeout(stopping_time)
                 print(f'Bus {self.name} holds for {stopping_time} seconds')
@@ -40,7 +42,7 @@ class Bus:
 
     def take_action(self):
         # decide holding time or skipping
-        return 1
+        return self.env.action
 
     def update_state(self):
         self.cur_station = self.next_station
@@ -82,6 +84,7 @@ class Env:
         self.arange_stations()
         self.buses = [Bus(self, self.env, i, i*5) for i in range(8)]
         self.ready = False
+        self.action = None
     
     def arange_stations(self) -> None:
         for index, station in enumerate(self.stations):
@@ -96,17 +99,24 @@ class Env:
                 station.set_last(self.stations[index-1])
 
     def step(self, action):
+        self.action = action
         while not self.ready:
             self.env.step()
         print("Environment Step")
         self.ready = False
+        return None
 
     @staticmethod
     def get_travel_time(station1, station2, t):
         return 10
 
+def policy(obs):
+    return 1
+
 if __name__ == '__main__':
     env = Env()
-    while env.env.now < 500:
-        env.step(None)
-        print(f'Current time: {}')
+    action = 1
+    while env.env.now < 100:
+        obs = env.step(action)
+        action = policy(obs)
+        print(f'Current time: {env.env.now}')
