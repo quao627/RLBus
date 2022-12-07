@@ -1,5 +1,6 @@
 from typing import List, Dict, Union
 
+import numpy as np
 import gym
 import simpy
 from simpy.events import AnyOf, AllOf, Event
@@ -48,6 +49,36 @@ class Bus:
         self.cur_station = self.next_station
         self.next_station = self.cur_station.get_next()
         self.next_travel_time = self.env.get_travel_time(self.cur_station, self.next_station, self.simpy_env.now)
+        
+    @property
+    def get_observation(self):
+        """get the observation of the bus"""
+        obs = [self.cur_station, self.next_station, self.next_travel_time]
+        return obs
+    
+    @property
+    def get_reward(self):
+        """get reward for the current state"""
+        reward = 0
+        return reward
+    
+    @property
+    def observation_space(self):
+        """observation space"""
+        return gym.spaces.Box(low=0, high=float('inf'), shape=(3,), dtype=np.float32)
+    
+    @property
+    def action_space(self):
+        """action space for bus holding only"""
+        return gym.spaces.Discrete(self.n_actions)
+        
+    def step(self, action):
+        """step function"""
+        self.env.step(action)
+        
+    def reset(self):
+        """reset function"""
+        self.env.reset()
 
 class Station:
     def __init__(self, 
@@ -106,6 +137,11 @@ class Env:
         self.ready = False
         return None
 
+    def reset(self):
+        self.action = None
+        self.ready = False
+        return None
+
     @staticmethod
     def get_travel_time(station1, station2, t):
         return 10
@@ -113,10 +149,32 @@ class Env:
 def policy(obs):
     return 1
 
-if __name__ == '__main__':
+def run():
+    if e is None:
+        train()
+    else:
+        eval()
+
+def train():
     env = Env()
-    action = 1
-    while env.env.now < 100:
+    for i in range(100):
         obs = env.step(action)
         action = policy(obs)
         print(f'Current time: {env.env.now}')
+        print("obs: ", obs)
+    
+def eval():
+    env = Env()
+    action = 1
+    for i in range(100):
+        obs = env.step(action)
+        action = policy(obs)
+        print(f'Current time: {env.env.now}')
+        print("obs: ", obs)   
+
+if __name__ == '__main__':
+    env = Env()
+    action = 1
+    n_actions = 5
+    e = None
+    run()
