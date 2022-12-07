@@ -1,11 +1,16 @@
 from typing import List, Dict, Union
 from dataclasses import dataclass
+import pickle
+import json
 
 import gym
 import simpy
 from simpy.events import AnyOf, AllOf, Event
 
 from utils import *
+
+
+data = {station_idx: [] for station_idx in range(N_STATION)}
 
 class Bus:
     def __init__(self, env, simpy_env, name, starting_time) -> None:
@@ -21,9 +26,13 @@ class Bus:
         self.proc = self.simpy_env.process(self.drive())
         self.passengers = []
         self.num_pax = 0
+        self.state_buffer = []
+        self.action_buffer = []
+        self.reward_buffer = []
 
     def drive(self):
         yield self.simpy_env.timeout(self.starting_time)
+        data[self.cur_station.idx].append(self.simpy_env.now)
         print(f'Bus {self.name} starts at {self.simpy_env.now}')
         while True:
             turn_around = False
@@ -44,13 +53,14 @@ class Bus:
                 
                 # 0 means holding
                 if h_action == 0:
+                    data[self.next_station.idx].append(self.simpy_env.now)
                     pax_alight = self.alight_pax()
                     pax_board = self.next_station.board_pax(self)
                     holding_time = max(pax_board * t_b, pax_alight * t_a)
                     holding_time += l_action
                     yield self.simpy_env.timeout(holding_time)
                     self.update_state(h_action)
-                    print(f'Bus {self.name} holds at station {self.cur_station.idx} for {l_actio n} seconds')
+                    print(f'Bus {self.name} holds at station {self.cur_station.idx} for {l_action} seconds')
                 
                 # 1 means skipping
                 elif h_action == 1:
@@ -74,7 +84,7 @@ class Bus:
                 # turn around
                 self.update_state(h_action)
                 print(f'Bus {self.name} turns around at station {self.cur_station.idx} to {self.next_station} for {l_action} seconds')
-            
+        
 
     def alight_all_pax(self, station):
         for pax in self.passengers:
@@ -192,7 +202,7 @@ class Env:
         self.env = simpy.Environment()
         self.stations = [Station(self.env, i, self.pax_alight[i], self.pax_board[i]) for i in range(N_STATION)]
         self.arange_stations()
-        self.buses = [Bus(self, self.env, i, i*5) for i in range(8)]
+        self.buses = [Bus(self, self.env, i, BUS_SCHEDULE[i]) for i in range(8)]
         self.ready = False
         self.action = None
     
@@ -222,12 +232,13 @@ class Env:
         return self.travel_times[station1.idx, int(self.env.now // TRAVEL_TIME_STEP)]
 
 def policy(obs):
-    return (0, 1)
+    return (0, 0)
 
 if __name__ == '__main__':
     env = Env()
-    action = (0, 1)
-    while env.env.now < 10000:
+    action = (0, 0)
+    while env.env.now < 10800:
         obs = env.step(action)
         action = policy(obs)
         print(f'Current time: {env.env.now}')
+    pickle.dump(data, open('data.pkl', 'wb'))
