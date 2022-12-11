@@ -26,8 +26,8 @@ t_a = 1.8 # time for alighting
 t_b = 3   # time for boarding
 
 # passenger arrival and alight rate
-AVG_PAX_ARRIVAL_RATE = 3 # p (sec/pax)
-STD_PAX_ARRIVAL_RATE = 5
+AVG_PAX_ARRIVAL_RATE = 30 # p (sec/pax)
+STD_PAX_ARRIVAL_RATE = 10
 
 
 PAX_ARRIVAL_RATE = [(np.exp(-0.5*((i-int(N_STATION // 2)*0.5)/STD_PAX_ARRIVAL_RATE)**2)* 1/ AVG_PAX_ARRIVAL_RATE) for i in range(int(N_STATION // 2))] # lambda pax/sec
@@ -44,14 +44,14 @@ min_travel_time = 2*60 # 2 minutes
 max_travel_time = 10*60 # 10 minutes
 
 # creating travel time table with poisson distribution
-def gen_travel_time_table(n_station, HORIZON, TRAVEL_TIME_STEP, sigma=10, poi_lam=0.5, seed=0):
+def gen_travel_time_table(n_station, HORIZON, TRAVEL_TIME_STEP, sigma=20, seed=0):
     n_station = int(n_station // 2)
     def gen_table(seed):
         np.random.seed(seed)
         tt_table = np.zeros((n_station, int(HORIZON/TRAVEL_TIME_STEP)))
         for i in range(n_station):
             for j in range(int(HORIZON/TRAVEL_TIME_STEP)):
-                tt_table[i][j] = avg_travel_time * (np.exp(-0.5*((j-int(HORIZON/TRAVEL_TIME_STEP)*0.5)/sigma)**2) + np.random.poisson(poi_lam)*0.5)
+                tt_table[i][j] = avg_travel_time * (np.exp(-0.5*((j-int(HORIZON/TRAVEL_TIME_STEP)*0.5)/sigma)**2) + np.random.normal(0, 0.15))
         tt_table = np.clip(tt_table, min_travel_time, max_travel_time)
         return tt_table
     tt_table_1 = gen_table(123)
@@ -91,6 +91,8 @@ def gen_pax_arrive(n_station, HORIZON, n_passenger, PAX_ARRIVAL_RATE, seed=0):
     pax_arrive_table_1 = gen_table(123)
     pax_arrive_table_2 = gen_table(42)[::-1, :][list(range(1, n_station)) + [0]]
     pax_arrive_table = np.concatenate([pax_arrive_table_1, pax_arrive_table_2], axis=0)
+    for i in range(pax_arrive_table.shape[0]):
+        pax_arrive_table[i, :] = pax_arrive_table[i, :] + i * HEADWAY
     return pax_arrive_table
 
 # generating table for number of alighting passengers at each station at each time step
@@ -124,6 +126,7 @@ def gen_bus_schedule(n_bus, HORIZON, seed=0):
 
 BUS_SCHEDULE = gen_bus_schedule(N_BUS, HORIZON)
 TABLE_TRAVEL_TIME = gen_travel_time_table(N_STATION, HORIZON, TRAVEL_TIME_STEP)
+# TABLE_TRAVEL_TIME = np.ones_like(TABLE_TRAVEL_TIME) * avg_travel_time
 PAX_ARRIVE_TABLE = gen_pax_arrive(N_STATION, HORIZON, 5000, PAX_ARRIVAL_RATE)
 
 # PAX_ALIGHT_TABLE = gen_pax_alight(N_STATION, HORIZON, 5000, PAX_ARRIVE_TABLE)
