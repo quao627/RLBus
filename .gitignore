@@ -4,6 +4,7 @@ tmp
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
+code/__pycache__/
 *.py[cod]
 *$py.class
 
@@ -85,6 +86,7 @@ ENV/
 *.xml
 *.csv
 *.png
+*.DS_Store
 .DS_Store
 
 # Don't add data
