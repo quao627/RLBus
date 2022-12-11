@@ -26,8 +26,6 @@ from stable_baselines3.common.type_aliases import Schedule
 from stable_baselines3.common.utils import get_device, is_vectorized_observation, obs_as_tensor
 from stable_baselines3.common.policies import BasePolicy
 
-SelfBaseModel = TypeVar("SelfBaseModel", bound="BaseModel")
-
 
 class HybridMlpExtractor(nn.Module):
     """
@@ -437,9 +435,8 @@ class HybridActorCriticPolicy(BasePolicy):
         :param deterministic: Whether to use stochastic or deterministic actions
         :return: Taken action according to the policy
         """
-        return self.get_distribution(observation)[0].get_actions(deterministic=deterministic), self.get_distribution(observation)[1].get_actions(deterministic=deterministic)
-        # print(self.get_distribution(observation))
         # return self.get_distribution(observation).get_actions(deterministic=deterministic)
+        return self.get_distribution(observation)[0].get_actions(deterministic=deterministic), self.get_distribution(observation)[1].get_actions(deterministic=deterministic)
 
     def evaluate_actions(self, obs: th.Tensor, actions: th.Tensor) -> Tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]:
         """

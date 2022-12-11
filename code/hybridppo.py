@@ -1,10 +1,21 @@
-from typing import Generator
+import warnings
+from typing import Any, Dict, Optional, Type, TypeVar, Union, Generator
 
-from on_policy_algorithm import *
-from policies import HybridActorCriticPolicy
+import numpy as np
+import torch as th
+from gym import spaces
+from torch.nn import functional as F
+
+from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
+from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, DictRolloutBufferSamples
+from stable_baselines3.common.utils import explained_variance, get_schedule_fn
 from stable_baselines3.common.preprocessing import get_action_dim
-from stable_baselines3.common.type_aliases import DictRolloutBufferSamples
-from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.vec_env import VecNormalize, VecEnv
+from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.buffers import RolloutBuffer, DictRolloutBuffer
+from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
+
+from policies import *
 
 TensorDict = Dict[Union[str, int], th.Tensor]
 class HybridRolloutBufferSamples(DictRolloutBufferSamples):
@@ -328,7 +339,7 @@ class HybridPPO(OnPolicyAlgorithm):
         self,
         env: VecEnv,
         callback: BaseCallback,
-        rollout_buffer: RolloutBuffer,
+        rollout_buffer: HybridRolloutBuffer,
         n_rollout_steps: int,
     ) -> bool:
         """

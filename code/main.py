@@ -1,3 +1,4 @@
+import time
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -20,15 +21,15 @@ if __name__ == '__main__':
                     env, 
                     verbose=1, 
                     batch_size=64, 
-                    tensorboard_log="./moving_env_tensorboard/",
+                    tensorboard_log="./results/moving_env/tb/",
                     learning_rate=0.00025,)
 
     model.learn(total_timesteps=1000000)
-    model.save("moving_env")
+    model.save("./results/moving_env")
 
     del model # remove to demonstrate saving and loading
 
-    model = HybridPPO.load("moving_env")
+    model = HybridPPO.load("./results/moving_env/tb/SelfHybridPPO_1/moving_env")
 
     obs = env.reset()
     while True:
