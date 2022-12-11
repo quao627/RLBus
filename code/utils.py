@@ -14,6 +14,9 @@ CAPACITY = 60
 # planned headway
 HEADWAY = 6 * 60
 
+# distance between stations
+STATION_DIST = 1 # km
+
 # number of stations
 N_STATION = 20
 
