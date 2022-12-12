@@ -14,6 +14,8 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.buffers import RolloutBuffer, DictRolloutBuffer
 from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
 
+from sb3_contrib.common.maskable.utils import get_action_masks
+
 from HybridPPO.policies import *
 from HybridPPO.hybridBuffer import HybridRolloutBuffer, HybridRolloutBufferSamples
 
@@ -105,6 +107,7 @@ class HybridPPO(OnPolicyAlgorithm):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
+        use_masking: bool = True,
     ):
 
         super().__init__(
@@ -165,6 +168,7 @@ class HybridPPO(OnPolicyAlgorithm):
         self.clip_range_vf = clip_range_vf
         self.normalize_advantage = normalize_advantage
         self.target_kl = target_kl
+        self.use_masking = use_masking
 
         if _init_setup_model:
             self._setup_model()
@@ -232,6 +236,8 @@ class HybridPPO(OnPolicyAlgorithm):
         if self.use_sde:
             self.policy.reset_noise(env.num_envs)
 
+        action_masks = None
+
         callback.on_rollout_start()
 
         while n_steps < n_rollout_steps:
@@ -242,7 +248,12 @@ class HybridPPO(OnPolicyAlgorithm):
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
-                actions, values, log_prob = self.policy(obs_tensor)
+                
+                # Ao's code
+                if self.use_masking:
+                    action_masks = get_action_masks(env)
+
+                actions, values, log_prob = self.policy(obs_tensor, action_masks=action_masks)
             actions_h, actions_l = actions
             actions_h = actions_h.cpu().numpy()
             actions_l = actions_l.cpu().numpy()
@@ -262,9 +273,8 @@ class HybridPPO(OnPolicyAlgorithm):
             clipped_actions = (clipped_actions_h, clipped_actions_l[0])
 
             # to do: modify the env.step() to accept time steps
-            new_obs, rewards, dones, infos, timesteps = env.step([clipped_actions])
-            # timesteps = np.ones_like(rewards) # Ao's code for testing
-
+            new_obs, rewards, dones, infos = env.step([clipped_actions])
+            timesteps = infos[0]['timestep'] # Ao's code for testing
             self.num_timesteps += env.num_envs
 
             # Give access to local variables
@@ -295,7 +305,7 @@ class HybridPPO(OnPolicyAlgorithm):
                     rewards[idx] += self.gamma * terminal_value
 
             # Ao's addition
-            rollout_buffer.add(self._last_obs, actions, rewards, self._last_episode_starts, values, log_prob, timesteps)
+            rollout_buffer.add(self._last_obs, actions, rewards, self._last_episode_starts, values, log_prob, timesteps, action_masks=action_masks)
             self._last_obs = new_obs
             self._last_episode_starts = dones
 
@@ -351,7 +361,7 @@ class HybridPPO(OnPolicyAlgorithm):
                 if self.use_sde:
                     self.policy.reset_noise(self.batch_size)
 
-                values, log_prob_h, log_prob_l, entropy_h, entropy_l = self.policy.evaluate_actions(rollout_data.observations, actions)
+                values, log_prob_h, log_prob_l, entropy_h, entropy_l = self.policy.evaluate_actions(rollout_data.observations, actions, action_masks=rollout_data.action_masks)
                 values = values.flatten()
                 # Normalize advantage
                 advantages = rollout_data.advantages
@@ -490,6 +500,7 @@ class HybridPPO(OnPolicyAlgorithm):
         state: Optional[Tuple[np.ndarray, ...]] = None,
         episode_start: Optional[np.ndarray] = None,
         deterministic: bool = False,
+        action_masks: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
         """
         Get the policy action from an observation (and optional hidden state).
@@ -504,4 +515,4 @@ class HybridPPO(OnPolicyAlgorithm):
         :return: the model's action and the next hidden state
             (used in recurrent policies)
         """
-        return self.policy.predict(observation, state, episode_start, deterministic)
+        return self.policy.predict(observation, state, episode_start, deterministic, action_masks=action_masks)

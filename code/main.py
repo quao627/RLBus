@@ -2,6 +2,9 @@ import time
 import warnings
 warnings.filterwarnings("ignore")
 
+import sys
+sys.path.append('HybridPPO')
+
 from HybridPPO.hybridppo import *
 from BusBunchingEnv import Env
 
@@ -28,7 +31,7 @@ if __name__ == '__main__':
                     tensorboard_log="./results/busbunching/",
                     learning_rate=0.00025,)
 
-    model.learn(total_timesteps=10000)
+    model.learn(total_timesteps=1000000)
     # model.save("./results/moving_env")
 
     # del model # remove to demonstrate saving and loading

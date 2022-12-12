@@ -238,7 +238,7 @@ class HybridActorCriticPolicy(BasePolicy):
 
         action_space_h, action_space_l = self.action_space
         # Action distribution
-        self.action_dist_h = make_proba_distribution(action_space_h, use_sde=use_sde, dist_kwargs=dist_kwargs)
+        self.action_dist_h = make_masked_proba_distribution(action_space_h)
         self.action_dist_l = make_proba_distribution(action_space_l, use_sde=use_sde, dist_kwargs=dist_kwargs)
 
         self._build(lr_schedule)
@@ -313,7 +313,7 @@ class HybridActorCriticPolicy(BasePolicy):
             self.action_net_h, self.log_std_h = self.action_dist_h.proba_distribution_net(
                 latent_dim=latent_dim_pi_h, latent_sde_dim=latent_dim_pi_h, log_std_init=self.log_std_init
             )
-        elif isinstance(self.action_dist_h, (CategoricalDistribution, MultiCategoricalDistribution, BernoulliDistribution)):
+        elif isinstance(self.action_dist_h, (MaskableDistribution, CategoricalDistribution, MultiCategoricalDistribution, BernoulliDistribution)):
             self.action_net_h = self.action_dist_h.proba_distribution_net(latent_dim=latent_dim_pi_h)
         else:
             raise NotImplementedError(f"Unsupported high level action distribution '{self.action_dist_h}'.")
@@ -352,7 +352,7 @@ class HybridActorCriticPolicy(BasePolicy):
         # Setup optimizer with initial learning rate
         self.optimizer = self.optimizer_class(self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)
 
-    def forward(self, obs: th.Tensor, deterministic: bool = False) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
+    def forward(self, obs: th.Tensor, deterministic: bool = False, action_masks: Optional[np.ndarray] = None) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         """
         Forward pass in all the networks (actor and critic)
 
@@ -367,6 +367,8 @@ class HybridActorCriticPolicy(BasePolicy):
         values = self.value_net(latent_vf)
         distribution_h = self._get_action_dist_h_from_latent(latent_pi_h)
         distribution_l = self._get_action_dist_l_from_latent(latent_pi_l)
+        if action_masks is not None:
+            distribution_h.apply_masking(action_masks)
         actions_h = distribution_h.get_actions(deterministic=deterministic)
         actions_l = distribution_l.get_actions(deterministic=deterministic)
         log_prob_h = distribution_h.log_prob(actions_h)
@@ -378,30 +380,17 @@ class HybridActorCriticPolicy(BasePolicy):
         log_prob = (log_prob_h, log_prob_l)
         return actions, values, log_prob
 
-    def _get_action_dist_h_from_latent(self, latent_pi_h: th.Tensor) -> Distribution:
+    # Ao's code
+    def _get_action_dist_h_from_latent(self, latent_pi_h: th.Tensor) -> MaskableDistribution:
         """
         Retrieve action distribution given the latent codes.
 
         :param latent_pi: Latent code for the actor
         :return: Action distribution
         """
-        mean_actions = self.action_net_h(latent_pi_h)
+        action_logits = self.action_net_h(latent_pi_h)
+        return self.action_dist_h.proba_distribution(action_logits=action_logits)
 
-        if isinstance(self.action_dist_h, DiagGaussianDistribution):
-            return self.action_dist_h.proba_distribution(mean_actions, self.log_std_h)
-        elif isinstance(self.action_dist_h, CategoricalDistribution):
-            # Here mean_actions are the logits before the softmax
-            return self.action_dist_h.proba_distribution(action_logits=mean_actions)
-        elif isinstance(self.action_dist_h, MultiCategoricalDistribution):
-            # Here mean_actions are the flattened logits
-            return self.action_dist_h.proba_distribution(action_logits=mean_actions)
-        elif isinstance(self.action_dist_h, BernoulliDistribution):
-            # Here mean_actions are the logits (before rounding to get the binary actions)
-            return self.action_dist_h.proba_distribution(action_logits=mean_actions)
-        elif isinstance(self.action_dist_h, StateDependentNoiseDistribution):
-            return self.action_dist_h.proba_distribution(mean_actions, self.log_std_h, latent_pi_h)
-        else:
-            raise ValueError("Invalid action distribution")
 
     def _get_action_dist_l_from_latent(self, latent_pi_l: th.Tensor) -> Distribution:
         """
@@ -428,7 +417,7 @@ class HybridActorCriticPolicy(BasePolicy):
         else:
             raise ValueError("Invalid action distribution")
 
-    def _predict(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
+    def _predict(self, observation: th.Tensor, deterministic: bool = False, action_masks: Optional[np.ndarray]=None) -> th.Tensor:
         """
         Get the action according to the policy for a given observation.
 
@@ -437,9 +426,9 @@ class HybridActorCriticPolicy(BasePolicy):
         :return: Taken action according to the policy
         """
         # return self.get_distribution(observation).get_actions(deterministic=deterministic)
-        return self.get_distribution(observation)[0].get_actions(deterministic=deterministic), self.get_distribution(observation)[1].get_actions(deterministic=deterministic)
+        return self.get_distribution(observation, action_masks)[0].get_actions(deterministic=deterministic), self.get_distribution(observation)[1].get_actions(deterministic=deterministic)
 
-    def evaluate_actions(self, obs: th.Tensor, actions: th.Tensor) -> Tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]:
+    def evaluate_actions(self, obs: th.Tensor, actions: th.Tensor, action_masks: Optional[np.ndarray] = None) -> Tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]:
         """
         Evaluate actions according to the current policy,
         given the observations.
@@ -453,6 +442,8 @@ class HybridActorCriticPolicy(BasePolicy):
         features = self.extract_features(obs)
         latent_pi_h, latent_pi_l, latent_vf = self.mlp_extractor(features)
         distribution_h = self._get_action_dist_h_from_latent(latent_pi_h)
+        if action_masks is not None:
+            distribution_h.apply_masking(action_masks)
         distribution_l = self._get_action_dist_l_from_latent(latent_pi_l)
         log_prob_h = distribution_h.log_prob(actions[0])
         log_prob_l = distribution_l.log_prob(actions[1])
@@ -461,7 +452,8 @@ class HybridActorCriticPolicy(BasePolicy):
         entropy_l = distribution_l.entropy()
         return values, log_prob_h, log_prob_l, entropy_h, entropy_l
 
-    def get_distribution(self, obs: th.Tensor) -> Distribution:
+    # Ao's code
+    def get_distribution(self, obs: th.Tensor, action_masks: Optional[np.ndarray] = None) -> Tuple[MaskableDistribution, Distribution]:
         """
         Get the current policy distribution given the observations.
 
@@ -470,7 +462,11 @@ class HybridActorCriticPolicy(BasePolicy):
         """
         features = self.extract_features(obs)
         latent_pi_h, latent_pi_l = self.mlp_extractor.forward_actor(features)
-        return self._get_action_dist_h_from_latent(latent_pi_h), self._get_action_dist_l_from_latent(latent_pi_l)
+        distribution_h = self._get_action_dist_h_from_latent(latent_pi_h)
+        distribution_l = self._get_action_dist_l_from_latent(latent_pi_l)
+        if action_masks is not None:
+            distribution_h = distribution_h.apply_masking(action_masks)
+        return distribution_h, distribution_l
 
     def predict_values(self, obs: th.Tensor) -> th.Tensor:
         """
@@ -489,6 +485,7 @@ class HybridActorCriticPolicy(BasePolicy):
         state: Optional[Tuple[np.ndarray, ...]] = None,
         episode_start: Optional[np.ndarray] = None,
         deterministic: bool = False,
+        action_masks: Optional[np.ndarray] = None, # Ao's code
     ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
         """
         Get the policy action from an observation (and optional hidden state).
@@ -500,6 +497,7 @@ class HybridActorCriticPolicy(BasePolicy):
             this correspond to beginning of episodes,
             where the hidden states of the RNN must be reset.
         :param deterministic: Whether or not to return deterministic actions.
+        :param action_masks: Action masks to apply to the action distribution
         :return: the model's action and the next hidden state
             (used in recurrent policies)
         """
@@ -513,7 +511,7 @@ class HybridActorCriticPolicy(BasePolicy):
 
         observation, vectorized_env = self.obs_to_tensor(observation)
         with th.no_grad():
-            actions = self._predict(observation, deterministic=deterministic)
+            actions = self._predict(observation, deterministic=deterministic, action_masks=action_masks)
 
         # Convert to numpy, and reshape to the original action shape
         actions_h = actions[0].item()
