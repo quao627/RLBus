@@ -9,7 +9,7 @@ from stable_baselines3.common.preprocessing import get_action_dim
 from stable_baselines3.common.vec_env import VecNormalize
 from stable_baselines3.common.buffers import RolloutBuffer
 
-from policies import *
+from HybridPPO.policies import *
 
 
 TensorDict = Dict[Union[str, int], th.Tensor]

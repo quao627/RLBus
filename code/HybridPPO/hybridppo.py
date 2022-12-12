@@ -14,8 +14,8 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.buffers import RolloutBuffer, DictRolloutBuffer
 from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
 
-from policies import *
-from hybridBuffer import HybridRolloutBuffer, HybridRolloutBufferSamples
+from HybridPPO.policies import *
+from HybridPPO.hybridBuffer import HybridRolloutBuffer, HybridRolloutBufferSamples
 
 
 
@@ -262,8 +262,8 @@ class HybridPPO(OnPolicyAlgorithm):
             clipped_actions = (clipped_actions_h, clipped_actions_l[0])
 
             # to do: modify the env.step() to accept time steps
-            new_obs, rewards, dones, infos = env.step([clipped_actions])
-            timesteps = np.ones_like(rewards) # Ao's code for testing
+            new_obs, rewards, dones, infos, timesteps = env.step([clipped_actions])
+            # timesteps = np.ones_like(rewards) # Ao's code for testing
 
             self.num_timesteps += env.num_envs
 
@@ -505,17 +505,3 @@ class HybridPPO(OnPolicyAlgorithm):
             (used in recurrent policies)
         """
         return self.policy.predict(observation, state, episode_start, deterministic)
-
-
-# HybridPPO(policy = "HybridPolicy", env = "CartPole-v1", n_steps = 2048, 
-#           n_epochs = 10, batch_size = 64, gamma = 0.99, gae_lambda = 0.95, 
-#           learning_rate = 0.0003, clip_range = 0.2, clip_range_vf = None, 
-#           ent_coef = 0.0, vf_coef = 0.5, max_grad_norm = 0.5, use_sde = False, 
-#           sde_sample_freq = - 1, target_kl = None, tensorboard_log = None, 
-#           policy_kwargs = None, verbose = 0, seed = None, 
-#           device = "auto", _init_setup_model = True, 
-#           action_space = (spaces.Discrete(3), spaces.Box(low=0, high=60, shape=(2,))))
-
-import gym_hybrid
-
-# HybridPPO(env='Moving-v0', policy=HybridActorCriticPolicy)

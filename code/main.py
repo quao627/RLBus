@@ -2,16 +2,14 @@ import time
 import warnings
 warnings.filterwarnings("ignore")
 
-from hybridppo import *
-import gym_hybrid
-
-from ..BusBunchingEnv import BusBunchingEnv
+from HybridPPO.hybridppo import *
+from BusBunchingEnv import Env
 
 
 if __name__ == '__main__':
 
     # env = gym.make('Moving-v0')
-    env = BusBunchingEnv()
+    env = Env()
     print(env.action_space)
     # if recording
     # env = gym.wrappers.Monitor(env, "./video", force=True)

@@ -26,6 +26,7 @@ from stable_baselines3.common.type_aliases import Schedule
 from stable_baselines3.common.utils import get_device, is_vectorized_observation, obs_as_tensor
 from stable_baselines3.common.policies import BasePolicy
 
+from sb3_contrib.common.maskable.distributions import MaskableDistribution, make_masked_proba_distribution
 
 class HybridMlpExtractor(nn.Module):
     """
