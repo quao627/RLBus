@@ -15,10 +15,7 @@ from stable_baselines3.common.buffers import RolloutBuffer, DictRolloutBuffer
 from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
 
 from HybridPPO.policies import *
-from HybridPPO.hybridBuffer import HybridRolloutBuffer, HybridRolloutBufferSamples
-
-
-
+from HybridPPO.hybridBuffer import HybridRolloutBuffer, HybridRolloutBufferSamples, HybridDictRolloutBuffer
 
 SelfHybridPPO = TypeVar("SelfHybridPPO", bound="HybridPPO")
 class HybridPPO(OnPolicyAlgorithm):

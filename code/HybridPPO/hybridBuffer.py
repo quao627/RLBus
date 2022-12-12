@@ -13,7 +13,17 @@ from HybridPPO.policies import *
 
 
 TensorDict = Dict[Union[str, int], th.Tensor]
+
 class HybridRolloutBufferSamples(NamedTuple):
+    observations: TensorDict
+    actions: spaces.Tuple
+    old_values: th.Tensor
+    old_log_prob: spaces.Tuple
+    advantages: th.Tensor
+    returns: th.Tensor
+    timesteps: th.Tensor # Ao's addition
+
+class HybridDictRolloutBufferSamples(NamedTuple):
     observations: TensorDict
     actions: spaces.Tuple
     old_values: th.Tensor
@@ -180,3 +190,8 @@ class HybridRolloutBuffer(RolloutBuffer):
             last_gae_lam = delta + np.exp(-self.gamma * self.timesteps[step]) * self.gae_lambda * next_non_terminal * last_gae_lam
             self.advantages[step] = last_gae_lam
         self.returns = self.advantages + self.values
+
+class HybridDictRolloutBuffer(HybridRolloutBuffer):
+    def __init__():
+        pass
+    

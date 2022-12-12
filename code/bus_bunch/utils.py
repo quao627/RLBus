@@ -8,11 +8,16 @@ np.random.seed(seed)
 # number of bus
 N_BUS = 12
 
+# feature dimension
+FEATURE_DIM = 8
+
 # capacity of bus
 CAPACITY = 60
 
+
 # planned headway
 HEADWAY = 6 * 60
+THRESHOLD = HEADWAY
 
 # distance between stations
 STATION_DIST = 1 # km

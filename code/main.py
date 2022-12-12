@@ -5,7 +5,7 @@ warnings.filterwarnings("ignore")
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--env", default="Moving-v0", help="environment ID : Moving-v0, Busbunch-v0")
+parser.add_argument("--env", default="Moving-v0", help="environment ID : Moving-v0, Sliding-v0, Busbunch-v0")
 parser.add_argument("--alg", default="HybridPPO", help="algorithm to use: HybridPPO | HybridTransformerPPO (not yet)")
 parser.add_argument("--num-timesteps", type=int, default=1000000)
 parser.add_argument("--lr", type=float, default=0.00025, help="learning rate for optimizer")
@@ -21,21 +21,18 @@ else:
     from HybridPPO.hybridppo import *
     from HybridPPO.policies import *
 import gym_hybrid
-
-print(args.alg)
+import bus_bunch
+from bus_bunch.environments import Env
 
 if __name__ == '__main__':
 
-    env = gym.make(args.env)
+    env = Env()
+    print(env.action_space)
     # if recording
     # env = gym.wrappers.Monitor(env, "./video", force=True)
     # env.metadata["render.modes"] = ["human", "rgb_array"]
     
     env.reset()
-
-    ACTION_SPACE = env.action_space[0].n
-    PARAMETERS_SPACE = env.action_space[1].shape[0]
-    OBSERVATION_SPACE = env.observation_space.shape[0]
 
     if args.alg == "HybridTransformerPPO":
         model = HybridTransformerPPO("HybridPolicy", 

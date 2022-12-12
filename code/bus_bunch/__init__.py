@@ -1,5 +1,5 @@
 from gym.envs.registration import register
-from bus_bunch.environments import *
+from bus_bunch.environments import Env
 
 register(
     id='Busbunch-v0',
