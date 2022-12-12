@@ -139,6 +139,112 @@ class HybridMlpExtractor(nn.Module):
     def forward_critic(self, features: th.Tensor) -> th.Tensor:
         return self.value_net(self.shared_net(features))
 
+# class HybridTransformerExtractor(nn.Module):
+#     """
+#     Constructs an Transformer network from a ``net_arch`` description.
+#     It constructed over the HybridMlpExtractor.
+
+#     Adapted from Stable Baselines and pytorch nn.module.Transformer.
+#     """
+
+#     def __init__(
+#         self,
+#         feature_dim: int,
+#         net_arch: List[Union[int, Dict[str, List[int]]]],
+#         activation_fn: Type[nn.Module],
+#         device: Union[th.device, str] = "auto",
+#         nhead: int = 10,
+#         num_layers: int = 12,
+#     ):
+#         super().__init__()
+#         device = get_device(device)
+#         shared_net, policy_net_h, policy_net_l, value_net = [], [], [], []
+#         policy_only_layers_h = []  # Layer sizes of the network that only belongs to the policy network (high level)
+#         policy_only_layers_l = []  # Layer sizes of the network that only belongs to the policy network (low level)
+#         value_only_layers = []  # Layer sizes of the network that only belongs to the value network
+#         last_layer_dim_shared = feature_dim
+
+#         # Iterate through the shared layers and build the shared parts of the network
+#         for layer in net_arch:
+#             if isinstance(layer, int):  # Check that this is a shared layer
+#                 # TODO: give layer a meaningful name
+#                 shared_net.append(nn.Linear(last_layer_dim_shared, layer))  # add linear of size layer
+#                 shared_net.append(activation_fn())
+#                 last_layer_dim_shared = layer
+#             else:
+#                 assert isinstance(layer, dict), "Error: the net_arch list can only contain ints and dicts"
+#                 if "pi" in layer:
+#                     assert isinstance(layer["pi"], list), "Error: net_arch[-1]['pi'] must contain a list of integers."
+#                     policy_only_layers_h = layer["pi"]
+#                     policy_only_layers_l = layer["pi"]
+
+#                 if "vf" in layer:
+#                     assert isinstance(layer["vf"], list), "Error: net_arch[-1]['vf'] must contain a list of integers."
+#                     value_only_layers = layer["vf"]
+#                 break  # From here on the network splits up in policy and value networ
+
+#         last_layer_dim_pi_h = last_layer_dim_shared
+#         last_layer_dim_pi_l = last_layer_dim_shared
+#         last_layer_dim_vf = last_layer_dim_shared
+
+#         # Build Encoder layer
+#         encoder_layer_pi_h = nn.TransformerEncoderLayer(d_model=last_layer_dim_pi_h, nhead=nhead, dim_feedforward=policy_only_layers_h[0])
+#         encoder_layer_pi_l = nn.TransformerEncoderLayer(d_model=last_layer_dim_pi_l, nhead=nhead, dim_feedforward=policy_only_layers_l[0])
+#         encoder_layer_vf = nn.TransformerEncoderLayer(d_model=last_layer_dim_vf, nhead=nhead, dim_feedforward=value_only_layers[0])
+
+#         policy_net_h.append(encoder_layer_pi_h)
+#         policy_net_l.append(encoder_layer_pi_l)
+#         value_net.append(encoder_layer_vf)
+
+#         # build transformer encoder
+#         transformer_encoder_policy_net_h = nn.TransformerEncoder(encoder_layer_pi_h, num_layers=num_layers, norm=nn.LayerNorm(last_layer_dim_pi_h))
+#         transformer_encoder_policy_net_l = nn.TransformerEncoder(encoder_layer_pi_l, num_layers=num_layers, norm=nn.LayerNorm(last_layer_dim_pi_l))
+#         transformer_encoder_value_net = nn.TransformerEncoder(encoder_layer_vf, num_layers=num_layers, norm = nn.LayerNorm(last_layer_dim_vf))
+
+#         # Build Decoder layer
+#         decoder_layer_pi_h = nn.TransformerDecoderLayer(d_model=last_layer_dim_pi_h, nhead=nhead)
+#         decoder_layer_pi_l = nn.TransformerDecoderLayer(d_model=last_layer_dim_pi_l, nhead=nhead)
+#         decoder_layer_vf = nn.TransformerDecoderLayer(d_model=last_layer_dim_vf, nhead=nhead)
+
+#         # build transformer decoder
+#         transformer_decoder_policy_net_h = nn.TransformerDecoder(decoder_layer_pi_h, num_layers=num_layers, norm=nn.LayerNorm(last_layer_dim_pi_h))
+#         transformer_decoder_policy_net_l = nn.TransformerDecoder(decoder_layer_pi_l, num_layers=num_layers, norm=nn.LayerNorm(last_layer_dim_pi_l))
+#         transformer_decoder_value_net = nn.TransformerDecoder(decoder_layer_vf, num_layers=num_layers, norm=nn.LayerNorm(last_layer_dim_vf))
+
+#         # Build transformer network
+#         self.shared_net = nn.Sequential(*shared_net).to(device)
+#         self.transformer_policy_net_h = nn.Transformer(d_model=last_layer_dim_pi_h, nhead=nhead, num_encoder_layers=num_layers, num_decoder_layers=num_layers, 
+#                                                 dim_feedforward=policy_only_layers_h[0], 
+#                                                 custom_encoder=transformer_encoder_policy_net_h, 
+#                                                 custom_decoder=transformer_decoder_policy_net_h)
+#         self.transformer_policy_net_l = nn.Transformer(d_model=last_layer_dim_pi_l, nhead=nhead, num_encoder_layers=num_layers, num_decoder_layers=num_layers, 
+#                                                 dim_feedforward=policy_only_layers_l[0], 
+#                                                 custom_encoder=transformer_encoder_policy_net_l, 
+#                                                 custom_decoder=transformer_decoder_policy_net_l)
+#         self.transformer_value_net = nn.Transformer(d_model=last_layer_dim_vf, nhead=nhead, num_encoder_layers=num_layers, num_decoder_layers=num_layers,
+#                                                 dim_feedforward=value_only_layers[0], 
+#                                                 custom_encoder=transformer_encoder_value_net, 
+#                                                 custom_decoder=transformer_decoder_value_net)
+
+#         # Save dim, used to create the distributions
+#         self.latent_dim_pi_h = last_layer_dim_pi_h
+#         self.latent_dim_pi_l = last_layer_dim_pi_l
+#         self.latent_dim_vf = last_layer_dim_vf
+
+#     def forward(self, features: th.Tensor) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
+#         """
+#         :return: latent_policy, latent_value of the specified network.
+#             If all layers are shared, then ``latent_policy == latent_value``
+#         """
+#         shared_latent = self.shared_net(features)
+#         return self.transformer_policy_net_h(shared_latent), self.transformer_policy_net_l(shared_latent), self.transformer_value_net(shared_latent)
+
+#     def forward_actor(self, features: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
+#         return self.transformer_policy_net_h(self.shared_net(features)), self.transformer_policy_net_l(self.shared_net(features))
+
+#     def forward_critic(self, features: th.Tensor) -> th.Tensor:
+#         return self.transformer_value_net(self.shared_net(features))
+
 class HybridActorCriticPolicy(BasePolicy):
     """
     Policy class for actor-critic algorithms (has both policy and value prediction).

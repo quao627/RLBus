@@ -1,12 +1,32 @@
+import argparse
 import time
 import warnings
 warnings.filterwarnings("ignore")
 
-from hybridppo import *
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--env", default="Moving-v0", help="environment ID : Moving-v0, Busbunch-v0")
+parser.add_argument("--alg", default="HybridPPO", help="algorithm to use: HybridPPO | HybridTransformerPPO (not yet)")
+parser.add_argument("--num-timesteps", type=int, default=1000000)
+parser.add_argument("--lr", type=float, default=0.00025, help="learning rate for optimizer")
+parser.add_argument("--batch-size", type=int, default=64, help="number of timesteps to optimize at the same time")
+args = parser.parse_args()
+
+if args.alg=="HybridTransformerPPO":
+    from HybridTransformerPPO.hybridppo import *
+    from HybridTransformerPPO.hybridBuffer import *
+    from HybridTransformerPPO.policies import *
+else:
+    from HybridPPO.hybridBuffer import *
+    from HybridPPO.hybridppo import *
+    from HybridPPO.policies import *
+import gym_hybrid
+
+print(args.alg)
 
 if __name__ == '__main__':
 
-    env = gym.make('Moving-v0')
+    env = gym.make(args.env)
     # if recording
     # env = gym.wrappers.Monitor(env, "./video", force=True)
     # env.metadata["render.modes"] = ["human", "rgb_array"]
@@ -17,19 +37,30 @@ if __name__ == '__main__':
     PARAMETERS_SPACE = env.action_space[1].shape[0]
     OBSERVATION_SPACE = env.observation_space.shape[0]
 
-    model = HybridPPO("HybridPolicy", 
-                    env, 
-                    verbose=1, 
-                    batch_size=64, 
-                    tensorboard_log="./results/moving_env/tb/",
-                    learning_rate=0.00025,)
+    if args.alg == "HybridTransformerPPO":
+        model = HybridTransformerPPO("HybridPolicy", 
+                        env, 
+                        verbose=1, 
+                        batch_size=args.batch_size, 
+                        tensorboard_log="./results/"+args.env+"/"+args.alg+"/",
+                        learning_rate=args.lr,)
+    else:
+        model = HybridPPO("HybridPolicy", 
+                        env, 
+                        verbose=1, 
+                        batch_size=args.batch_size, 
+                        tensorboard_log="./results/"+args.env+"/"+args.alg+"/",
+                        learning_rate=args.lr,)
 
-    model.learn(total_timesteps=1000000)
-    model.save("./results/moving_env")
+    model.learn(total_timesteps=args.num_timesteps)
+    model.save("./results/"+args.env+"/"+args.alg+"/model")
 
     del model # remove to demonstrate saving and loading
 
-    model = HybridPPO.load("./results/moving_env/tb/SelfHybridPPO_1/moving_env")
+    if args.alg == "HybridTransformerPPO":
+        model = HybridTransformerPPO.load("./results/"+args.env+"/"+args.alg+"/model")
+    else:
+        model = HybridPPO.load("./results/"+args.env+"/"+args.alg+"/model")
 
     obs = env.reset()
     while True:
