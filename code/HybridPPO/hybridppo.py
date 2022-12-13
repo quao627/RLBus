@@ -301,7 +301,7 @@ class HybridPPO(OnPolicyAlgorithm):
                     terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
                     with th.no_grad():
                         terminal_value = self.policy.predict_values(terminal_obs)[0]
-                    rewards[idx] += self.gamma * terminal_value
+                    rewards[idx] += np.exp(-self.gamma * infos[idx]['timestep']) * terminal_value
             # Ao's addition
             rollout_buffer.add(self._last_obs, actions, rewards, self._last_episode_starts, values, log_prob, timesteps, action_masks)
             self._last_obs = new_obs
