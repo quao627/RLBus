@@ -464,7 +464,7 @@ class HybridActorCriticPolicy(BasePolicy):
         distribution_h = self._get_action_dist_h_from_latent(latent_pi_h)
         distribution_l = self._get_action_dist_l_from_latent(latent_pi_l)
         if action_masks is not None:
-            distribution_h = distribution_h.apply_masking(action_masks)
+            distribution_h.apply_masking(action_masks)
         return distribution_h, distribution_l
 
     def predict_values(self, obs: th.Tensor) -> th.Tensor:
