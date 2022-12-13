@@ -1,5 +1,7 @@
 import warnings
 from typing import Any, Dict, Optional, Type, TypeVar, Union
+import time
+import sys
 
 import numpy as np
 import torch as th
@@ -8,11 +10,12 @@ from torch.nn import functional as F
 
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
-from stable_baselines3.common.utils import explained_variance, get_schedule_fn
+from stable_baselines3.common.utils import explained_variance, get_schedule_fn, safe_mean
 from stable_baselines3.common.vec_env import VecEnv
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.buffers import RolloutBuffer, DictRolloutBuffer
 from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
+from sb3_contrib.common.maskable.utils import get_action_masks
 
 from HybridPPO.policies import *
 from HybridPPO.hybridBuffer import HybridRolloutBuffer, HybridRolloutBufferSamples, HybridDictRolloutBuffer
@@ -102,6 +105,7 @@ class HybridPPO(OnPolicyAlgorithm):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
+        use_masking: bool = True,
     ):
 
         super().__init__(
@@ -162,6 +166,7 @@ class HybridPPO(OnPolicyAlgorithm):
         self.clip_range_vf = clip_range_vf
         self.normalize_advantage = normalize_advantage
         self.target_kl = target_kl
+        self.use_masking = use_masking
 
         if _init_setup_model:
             self._setup_model()
@@ -228,6 +233,8 @@ class HybridPPO(OnPolicyAlgorithm):
         # Sample new weights for the state dependent exploration
         if self.use_sde:
             self.policy.reset_noise(env.num_envs)
+            
+        action_masks = None
 
         callback.on_rollout_start()
 
@@ -239,7 +246,12 @@ class HybridPPO(OnPolicyAlgorithm):
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
-                actions, values, log_prob = self.policy(obs_tensor)
+                
+                # Ao's code
+                if self.use_masking:
+                    action_masks = get_action_masks(env)
+
+                actions, values, log_prob = self.policy(obs_tensor, action_masks=action_masks)
             actions_h, actions_l = actions
             actions_h = actions_h.cpu().numpy()
             actions_l = actions_l.cpu().numpy()
@@ -260,7 +272,7 @@ class HybridPPO(OnPolicyAlgorithm):
 
             # to do: modify the env.step() to accept time steps
             new_obs, rewards, dones, infos = env.step([clipped_actions])
-            timesteps = np.ones_like(rewards) # Ao's code for testing
+            timesteps = infos[0]['timestep'] # JH's code for testing
 
             self.num_timesteps += env.num_envs
 
@@ -290,9 +302,8 @@ class HybridPPO(OnPolicyAlgorithm):
                     with th.no_grad():
                         terminal_value = self.policy.predict_values(terminal_obs)[0]
                     rewards[idx] += self.gamma * terminal_value
-
             # Ao's addition
-            rollout_buffer.add(self._last_obs, actions, rewards, self._last_episode_starts, values, log_prob, timesteps)
+            rollout_buffer.add(self._last_obs, actions, rewards, self._last_episode_starts, values, log_prob, timesteps, action_masks)
             self._last_obs = new_obs
             self._last_episode_starts = dones
 
@@ -470,16 +481,56 @@ class HybridPPO(OnPolicyAlgorithm):
         tb_log_name: str = "SelfHybridPPO",
         reset_num_timesteps: bool = True,
         progress_bar: bool = False,
+        eval_env: Optional[GymEnv] = None,
+        eval_freq: int = -1,
+        n_eval_episodes: int = 5,
+        eval_log_path: Optional[str] = None,        
     ) -> SelfHybridPPO:
-
-        return super().learn(
-            total_timesteps=total_timesteps,
-            callback=callback,
-            log_interval=log_interval,
-            tb_log_name=tb_log_name,
-            reset_num_timesteps=reset_num_timesteps,
-            progress_bar=progress_bar,
+        
+        iteration = 0
+        
+        total_timesteps, callback = self._setup_learn(
+            total_timesteps,
+            eval_env,
+            callback,
+            eval_freq,
+            n_eval_episodes,
+            eval_log_path,
+            reset_num_timesteps,
+            tb_log_name,
+            progress_bar,
         )
+        callback.on_training_start(locals(), globals())
+
+        while self.num_timesteps < total_timesteps:
+
+            continue_training = self.collect_rollouts(self.env, callback, self.rollout_buffer, n_rollout_steps=self.n_steps)
+
+            if continue_training is False:
+                break
+
+            iteration += 1
+            self._update_current_progress_remaining(self.num_timesteps, total_timesteps)
+
+            # Display training infos
+            if log_interval is not None and iteration % log_interval == 0:
+                time_elapsed = max((time.time_ns() - self.start_time) / 1e9, sys.float_info.epsilon)
+                fps = int((self.num_timesteps - self._num_timesteps_at_start) / time_elapsed)
+                self.logger.record("time/iterations", iteration, exclude="tensorboard")
+                # print(self.ep_info_buffer)
+                if len(self.ep_info_buffer) > 0 and len(self.ep_info_buffer[0]) > 0:
+                    self.logger.record("rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer]))
+                    self.logger.record("rollout/ep_len_mean", safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer]))
+                self.logger.record("time/fps", fps)
+                self.logger.record("time/time_elapsed", int(time_elapsed), exclude="tensorboard")
+                self.logger.record("time/total_timesteps", self.num_timesteps, exclude="tensorboard")
+                self.logger.dump(step=self.num_timesteps)
+
+            self.train()
+
+        callback.on_training_end()
+
+        return self
 
     def predict(
         self,
@@ -487,6 +538,7 @@ class HybridPPO(OnPolicyAlgorithm):
         state: Optional[Tuple[np.ndarray, ...]] = None,
         episode_start: Optional[np.ndarray] = None,
         deterministic: bool = False,
+        action_masks: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
         """
         Get the policy action from an observation (and optional hidden state).
@@ -501,4 +553,4 @@ class HybridPPO(OnPolicyAlgorithm):
         :return: the model's action and the next hidden state
             (used in recurrent policies)
         """
-        return self.policy.predict(observation, state, episode_start, deterministic)
+        return self.policy.predict(observation, state, episode_start, deterministic, action_masks)

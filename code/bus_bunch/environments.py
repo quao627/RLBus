@@ -15,13 +15,6 @@ from simpy.events import AnyOf, AllOf, Event
 
 from bus_bunch.utils import *
 
-num_skipping_stop = 0
-num_total_stop = 0
-
-data = {station_idx: [] for station_idx in range(N_STATION)}
-
-# event_buffer = {bus_id: {'ready': False, 'events': []} for bus_id in range(N_BUS)}
-
 class Bus:
     def __init__(self, env, simpy_env, idx, starting_time) -> None:
         self.env = env
@@ -33,7 +26,7 @@ class Bus:
         #self.next_travel_time = self.env.get_travel_time(self.cur_station)
         self.next_travel_time = 0
         self.starting_time = starting_time
-        print(f'Bus {self.idx} is successfully initialized.')
+        # print(f'Bus {self.idx} is successfully initialized.')
         self.proc = self.simpy_env.process(self.drive())
         self.passengers = []
         self.num_pax = 0
@@ -50,7 +43,7 @@ class Bus:
         # hold at the terminal before starting to drive
         yield self.simpy_env.timeout(self.starting_time)
         self.env.departure_times.append(self.simpy_env.now)
-        data[self.cur_station.idx].append(self.simpy_env.now)
+        self.env.data[self.cur_station.idx].append(self.simpy_env.now)
         #print(f'Bus {self.idx} starts at {self.simpy_env.now}')
 
         # each cycle is a trip from one station to the next
@@ -68,6 +61,7 @@ class Bus:
             self.taking_action = True
             self.env.acting_bus = self.idx
             self.action_start_time = self.simpy_env.now
+
             self.env.allow_skipping = (not any([pax.alight_station == self.next_station.idx for pax in self.passengers])) and (self.next_station.idx != 0)
             self.env.allow_turning_around = (self.next_station.idx != 0)
 
@@ -76,13 +70,13 @@ class Bus:
             # high-level and low-level actions
             h_action, l_action = self.env.action
             if h_action == 0:
-                l_action = l_action[0]
+                l_action = l_action[0] 
             elif h_action == 2:
                 l_action = l_action[1]
             else:
                 l_action = 0
             self.h_action = h_action
-            self.l_action = l_action
+            self.l_action = l_action * THRESHOLD
             
             # 0 means holding
             if h_action == 0 or self.next_station.idx in [N_STATION-1, int(N_STATION//2)-1]:
@@ -97,7 +91,7 @@ class Bus:
                 # global num_total_stop               
                 # num_total_stop += 1
                 
-                    data[self.next_station.idx].append(self.simpy_env.now)
+                    self.env.data[self.next_station.idx].append(self.simpy_env.now)
                     if self.next_station.idx in [N_STATION-1, int(N_STATION//2)-1]:
                         pax_alight = self.alight_all_pax(self.next_station)
                         pax_board = 0
@@ -312,6 +306,12 @@ class Env(gym.Env):
         self.arange_stations()
         self.buses = [Bus(self, self.env, i, BUS_SCHEDULE[i]) for i in range(N_BUS)]
         
+        # Moved these variables into Env class
+        self.num_skipping_stop = 0
+        self.num_total_stop = 0
+
+        self.data = {station_idx: [] for station_idx in range(N_STATION)}
+        
         self.last_timestep = 0
         self.acc_waiting_time = 0
         self.acc_on_bus_time = 0
@@ -323,18 +323,18 @@ class Env(gym.Env):
 
         self.observation_space = Box(low=-1e4, high=1e4, shape=(N_BUS*FEATURE_DIM,))
         self.h_action_space = Discrete(3)
-        self.l_action_space = Box(low=0, high=THRESHOLD, shape=(2,))
+        self.l_action_space = Box(low=0, high=1, shape=(2,))
         self.action_space = Tuple((self.h_action_space, self.l_action_space))
                 
     def reset(self):
         self.env = simpy.Environment()
+        self.passengers = []
         self.stations = [Station(self, self.env, i, self.pax_alight[i], self.pax_board[i]) for i in range(N_STATION)]
         self.arange_stations()
         self.buses = [Bus(self, self.env, i, BUS_SCHEDULE[i]) for i in range(N_BUS)]
         self.ready = False
         self.action = None
         self.departure_times = []
-        self.passengers = []
 
         self.acc_waiting_time = 0
         self.acc_on_bus_time = 0
@@ -369,15 +369,17 @@ class Env(gym.Env):
             self.env.step()
         # print("Environment Step")
         self.ready = False
-        
+
         timestep = self.env.now - self.last_timestep
         self.last_timestep = self.env.now
         obs = self.get_observation()
         rewards = self.get_reward()
-        done = False
+        done = self.env.peek() > HORIZON-1000
         info = {'timestep': timestep}
-        
         return obs, rewards, done, info
+
+    def action_masks(self):
+        return [True, self.allow_skipping, self.allow_turning_around]
 
     @staticmethod
     def extract_observations(obs):
@@ -432,7 +434,7 @@ class Env(gym.Env):
         return obs
 
     def get_reward(self):
-        alpha, beta = 1, 1
+        alpha, beta = 3, 1
         waiting_time = 0
         on_bus_time = 0
 
@@ -449,17 +451,11 @@ class Env(gym.Env):
         reward = alpha * waiting_time + beta * on_bus_time
         self.acc_waiting_time += waiting_time
         self.acc_on_bus_time += on_bus_time
-        return reward
+        return -reward
 
     def get_travel_time(self, station1):
         return self.travel_times[station1.idx, int(self.env.now // TRAVEL_TIME_STEP)]
     
-    def render(self):
-        pass
-
-def policy(obs):
-    return (0, 1)
-
 @dataclass
 class Passenger:
     start_time: float
@@ -469,22 +465,26 @@ class Passenger:
     status: int = 0 # 0: waiting, 1: on bus, 2: alighted
     new_status: int = 0 # 0: waiting, 1: on bus, 2: alighted
 
-if __name__ == '__main__':
-    env = Env()
-    action = (1, 1)
-    while env.env.peek() < 10700:
-        obs, rew, done, _, timestep = env.step(action)
-        r = random.random()
-        # if r < 0.1 and env.allow_skipping:
-        #     action = (1, 0)
-        # elif r < 0.2:
-        #     action = (2, 1)
-        # else:
-        #     action = policy(obs)
-        action = policy(obs)   
-        # print(f'Current time: {env.env.now}')
-    pickle.dump(data, open('data.pkl', 'wb'))
-    print(env.departure_times)
-    print('Total waiting time: ', env.acc_waiting_time)
-    print('Total on bus time: ', env.acc_on_bus_time)
-    print('stops allowde to skip: ', num_skipping_stop, ' ', num_total_stop)
+# if __name__ == '__main__':
+#     env = Env()
+#     action = env.action_space.sample() 
+#     total_reward = 0
+#     while env.env.peek() < 10700:
+#         obs, rew, done, info = env.step(action) 
+#         r = random.random()
+#         total_reward += rew
+#         # if r < 0.1 and env.allow_skipping:
+#         #     action = (1, 0)
+#         # elif r < 0.2:
+#         #     action = (2, 1)
+#         # else:
+#         #     action = policy(obs)
+#         print(total_reward)
+#         action = env.action_space.sample()   
+#         # print(f'Current time: {env.env.now}')
+#     pickle.dump(env.data, open('data.pkl', 'wb'))
+#     print(env.departure_times)
+#     print('Total waiting time: ', env.acc_waiting_time)
+#     print('Total on bus time: ', env.acc_on_bus_time)
+#     print('stops allowde to skip: ', env.num_skipping_stop, ' ', env.num_total_stop)
+#     print('Total reward: ', total_reward)

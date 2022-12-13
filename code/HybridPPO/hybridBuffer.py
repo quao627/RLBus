@@ -22,6 +22,7 @@ class HybridRolloutBufferSamples(NamedTuple):
     advantages: th.Tensor
     returns: th.Tensor
     timesteps: th.Tensor # Ao's addition
+    action_masks: th.Tensor # Ao's addition
 
 class HybridDictRolloutBufferSamples(NamedTuple):
     observations: TensorDict
@@ -70,7 +71,17 @@ class HybridRolloutBuffer(RolloutBuffer):
         self.log_probs = np.zeros((self.buffer_size, self.n_envs, 2), dtype=np.float32)
         self.advantages = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         # Ao's addition
+        if isinstance(self.action_space[0], spaces.Discrete):
+            mask_dims = self.action_space[0].n
+        elif isinstance(self.action_space[0], spaces.MultiDiscrete):
+            mask_dims = sum(self.action_space[0].nvec)
+        elif isinstance(self.action_space[0], spaces.MultiBinary):
+            mask_dims = 2 * self.action_space[0].n  # One mask per binary outcome
+        else:
+            raise ValueError(f"Unsupported action space {type(self.action_space[0])}")
+        self.mask_dims = mask_dims
         self.timesteps = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.action_masks = np.ones((self.buffer_size, self.n_envs, mask_dims), dtype=np.float32)
         self.generator_ready = False
 
         super(RolloutBuffer, self).reset()
@@ -84,6 +95,7 @@ class HybridRolloutBuffer(RolloutBuffer):
         value: th.Tensor,
         log_prob: spaces.Tuple,
         timestep: np.ndarray, # Ao's addition
+        action_masks: Optional[np.ndarray] = None, # Ao's addition
     ) -> None:  # pytype: disable=signature-mismatch
         """
         :param obs: Observation
@@ -123,6 +135,8 @@ class HybridRolloutBuffer(RolloutBuffer):
         self.rewards[self.pos] = np.array(reward).copy()
         # Ao's addition
         self.timesteps[self.pos] = np.array(timestep).copy()
+        if action_masks is not None:
+            self.action_masks[self.pos] = action_masks.reshape((self.n_envs, self.mask_dims))
         self.episode_starts[self.pos] = np.array(episode_start).copy()
         self.values[self.pos] = value.clone().cpu().numpy().flatten()
         self.log_probs[self.pos,0,0] = log_prob_h.clone().cpu().numpy()
@@ -138,7 +152,7 @@ class HybridRolloutBuffer(RolloutBuffer):
         if not self.generator_ready:
 
             # Ao's addition
-            _tensor_names = ["actions", "values", "log_probs", "advantages", "returns", "timesteps"]
+            _tensor_names = ["actions", "values", "log_probs", "advantages", "returns", "timesteps", "action_masks"]
 
             for tensor in _tensor_names:
                 self.__dict__[tensor] = self.swap_and_flatten(self.__dict__[tensor])
@@ -163,6 +177,7 @@ class HybridRolloutBuffer(RolloutBuffer):
             returns=self.to_torch(self.returns[batch_inds].flatten()),
             # Ao's addition
             timesteps=self.to_torch(self.timesteps[batch_inds].flatten()),
+            action_masks=self.to_torch(self.action_masks[batch_inds].reshape(-1, self.mask_dims)),
         )
     
     # Ao's code for advantage and return calculation

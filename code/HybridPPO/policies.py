@@ -26,6 +26,7 @@ from stable_baselines3.common.type_aliases import Schedule
 from stable_baselines3.common.utils import get_device, is_vectorized_observation, obs_as_tensor
 from stable_baselines3.common.policies import BasePolicy
 
+from sb3_contrib.common.maskable.distributions import MaskableDistribution, make_masked_proba_distribution
 
 class HybridMlpExtractor(nn.Module):
     """
@@ -139,112 +140,6 @@ class HybridMlpExtractor(nn.Module):
     def forward_critic(self, features: th.Tensor) -> th.Tensor:
         return self.value_net(self.shared_net(features))
 
-# class HybridTransformerExtractor(nn.Module):
-#     """
-#     Constructs an Transformer network from a ``net_arch`` description.
-#     It constructed over the HybridMlpExtractor.
-
-#     Adapted from Stable Baselines and pytorch nn.module.Transformer.
-#     """
-
-#     def __init__(
-#         self,
-#         feature_dim: int,
-#         net_arch: List[Union[int, Dict[str, List[int]]]],
-#         activation_fn: Type[nn.Module],
-#         device: Union[th.device, str] = "auto",
-#         nhead: int = 10,
-#         num_layers: int = 12,
-#     ):
-#         super().__init__()
-#         device = get_device(device)
-#         shared_net, policy_net_h, policy_net_l, value_net = [], [], [], []
-#         policy_only_layers_h = []  # Layer sizes of the network that only belongs to the policy network (high level)
-#         policy_only_layers_l = []  # Layer sizes of the network that only belongs to the policy network (low level)
-#         value_only_layers = []  # Layer sizes of the network that only belongs to the value network
-#         last_layer_dim_shared = feature_dim
-
-#         # Iterate through the shared layers and build the shared parts of the network
-#         for layer in net_arch:
-#             if isinstance(layer, int):  # Check that this is a shared layer
-#                 # TODO: give layer a meaningful name
-#                 shared_net.append(nn.Linear(last_layer_dim_shared, layer))  # add linear of size layer
-#                 shared_net.append(activation_fn())
-#                 last_layer_dim_shared = layer
-#             else:
-#                 assert isinstance(layer, dict), "Error: the net_arch list can only contain ints and dicts"
-#                 if "pi" in layer:
-#                     assert isinstance(layer["pi"], list), "Error: net_arch[-1]['pi'] must contain a list of integers."
-#                     policy_only_layers_h = layer["pi"]
-#                     policy_only_layers_l = layer["pi"]
-
-#                 if "vf" in layer:
-#                     assert isinstance(layer["vf"], list), "Error: net_arch[-1]['vf'] must contain a list of integers."
-#                     value_only_layers = layer["vf"]
-#                 break  # From here on the network splits up in policy and value networ
-
-#         last_layer_dim_pi_h = last_layer_dim_shared
-#         last_layer_dim_pi_l = last_layer_dim_shared
-#         last_layer_dim_vf = last_layer_dim_shared
-
-#         # Build Encoder layer
-#         encoder_layer_pi_h = nn.TransformerEncoderLayer(d_model=last_layer_dim_pi_h, nhead=nhead, dim_feedforward=policy_only_layers_h[0])
-#         encoder_layer_pi_l = nn.TransformerEncoderLayer(d_model=last_layer_dim_pi_l, nhead=nhead, dim_feedforward=policy_only_layers_l[0])
-#         encoder_layer_vf = nn.TransformerEncoderLayer(d_model=last_layer_dim_vf, nhead=nhead, dim_feedforward=value_only_layers[0])
-
-#         policy_net_h.append(encoder_layer_pi_h)
-#         policy_net_l.append(encoder_layer_pi_l)
-#         value_net.append(encoder_layer_vf)
-
-#         # build transformer encoder
-#         transformer_encoder_policy_net_h = nn.TransformerEncoder(encoder_layer_pi_h, num_layers=num_layers, norm=nn.LayerNorm(last_layer_dim_pi_h))
-#         transformer_encoder_policy_net_l = nn.TransformerEncoder(encoder_layer_pi_l, num_layers=num_layers, norm=nn.LayerNorm(last_layer_dim_pi_l))
-#         transformer_encoder_value_net = nn.TransformerEncoder(encoder_layer_vf, num_layers=num_layers, norm = nn.LayerNorm(last_layer_dim_vf))
-
-#         # Build Decoder layer
-#         decoder_layer_pi_h = nn.TransformerDecoderLayer(d_model=last_layer_dim_pi_h, nhead=nhead)
-#         decoder_layer_pi_l = nn.TransformerDecoderLayer(d_model=last_layer_dim_pi_l, nhead=nhead)
-#         decoder_layer_vf = nn.TransformerDecoderLayer(d_model=last_layer_dim_vf, nhead=nhead)
-
-#         # build transformer decoder
-#         transformer_decoder_policy_net_h = nn.TransformerDecoder(decoder_layer_pi_h, num_layers=num_layers, norm=nn.LayerNorm(last_layer_dim_pi_h))
-#         transformer_decoder_policy_net_l = nn.TransformerDecoder(decoder_layer_pi_l, num_layers=num_layers, norm=nn.LayerNorm(last_layer_dim_pi_l))
-#         transformer_decoder_value_net = nn.TransformerDecoder(decoder_layer_vf, num_layers=num_layers, norm=nn.LayerNorm(last_layer_dim_vf))
-
-#         # Build transformer network
-#         self.shared_net = nn.Sequential(*shared_net).to(device)
-#         self.transformer_policy_net_h = nn.Transformer(d_model=last_layer_dim_pi_h, nhead=nhead, num_encoder_layers=num_layers, num_decoder_layers=num_layers, 
-#                                                 dim_feedforward=policy_only_layers_h[0], 
-#                                                 custom_encoder=transformer_encoder_policy_net_h, 
-#                                                 custom_decoder=transformer_decoder_policy_net_h)
-#         self.transformer_policy_net_l = nn.Transformer(d_model=last_layer_dim_pi_l, nhead=nhead, num_encoder_layers=num_layers, num_decoder_layers=num_layers, 
-#                                                 dim_feedforward=policy_only_layers_l[0], 
-#                                                 custom_encoder=transformer_encoder_policy_net_l, 
-#                                                 custom_decoder=transformer_decoder_policy_net_l)
-#         self.transformer_value_net = nn.Transformer(d_model=last_layer_dim_vf, nhead=nhead, num_encoder_layers=num_layers, num_decoder_layers=num_layers,
-#                                                 dim_feedforward=value_only_layers[0], 
-#                                                 custom_encoder=transformer_encoder_value_net, 
-#                                                 custom_decoder=transformer_decoder_value_net)
-
-#         # Save dim, used to create the distributions
-#         self.latent_dim_pi_h = last_layer_dim_pi_h
-#         self.latent_dim_pi_l = last_layer_dim_pi_l
-#         self.latent_dim_vf = last_layer_dim_vf
-
-#     def forward(self, features: th.Tensor) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
-#         """
-#         :return: latent_policy, latent_value of the specified network.
-#             If all layers are shared, then ``latent_policy == latent_value``
-#         """
-#         shared_latent = self.shared_net(features)
-#         return self.transformer_policy_net_h(shared_latent), self.transformer_policy_net_l(shared_latent), self.transformer_value_net(shared_latent)
-
-#     def forward_actor(self, features: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
-#         return self.transformer_policy_net_h(self.shared_net(features)), self.transformer_policy_net_l(self.shared_net(features))
-
-#     def forward_critic(self, features: th.Tensor) -> th.Tensor:
-#         return self.transformer_value_net(self.shared_net(features))
-
 class HybridActorCriticPolicy(BasePolicy):
     """
     Policy class for actor-critic algorithms (has both policy and value prediction).
@@ -343,7 +238,7 @@ class HybridActorCriticPolicy(BasePolicy):
 
         action_space_h, action_space_l = self.action_space
         # Action distribution
-        self.action_dist_h = make_proba_distribution(action_space_h, use_sde=use_sde, dist_kwargs=dist_kwargs)
+        self.action_dist_h = make_masked_proba_distribution(action_space_h)
         self.action_dist_l = make_proba_distribution(action_space_l, use_sde=use_sde, dist_kwargs=dist_kwargs)
 
         self._build(lr_schedule)
@@ -418,7 +313,7 @@ class HybridActorCriticPolicy(BasePolicy):
             self.action_net_h, self.log_std_h = self.action_dist_h.proba_distribution_net(
                 latent_dim=latent_dim_pi_h, latent_sde_dim=latent_dim_pi_h, log_std_init=self.log_std_init
             )
-        elif isinstance(self.action_dist_h, (CategoricalDistribution, MultiCategoricalDistribution, BernoulliDistribution)):
+        elif isinstance(self.action_dist_h, (MaskableDistribution, CategoricalDistribution, MultiCategoricalDistribution, BernoulliDistribution)):
             self.action_net_h = self.action_dist_h.proba_distribution_net(latent_dim=latent_dim_pi_h)
         else:
             raise NotImplementedError(f"Unsupported high level action distribution '{self.action_dist_h}'.")
@@ -457,7 +352,7 @@ class HybridActorCriticPolicy(BasePolicy):
         # Setup optimizer with initial learning rate
         self.optimizer = self.optimizer_class(self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)
 
-    def forward(self, obs: th.Tensor, deterministic: bool = False) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
+    def forward(self, obs: th.Tensor, deterministic: bool = False, action_masks: Optional[np.ndarray] = None) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         """
         Forward pass in all the networks (actor and critic)
 
@@ -472,6 +367,8 @@ class HybridActorCriticPolicy(BasePolicy):
         values = self.value_net(latent_vf)
         distribution_h = self._get_action_dist_h_from_latent(latent_pi_h)
         distribution_l = self._get_action_dist_l_from_latent(latent_pi_l)
+        if action_masks is not None:
+            distribution_h.apply_masking(action_masks)
         actions_h = distribution_h.get_actions(deterministic=deterministic)
         actions_l = distribution_l.get_actions(deterministic=deterministic)
         log_prob_h = distribution_h.log_prob(actions_h)
@@ -483,30 +380,16 @@ class HybridActorCriticPolicy(BasePolicy):
         log_prob = (log_prob_h, log_prob_l)
         return actions, values, log_prob
 
-    def _get_action_dist_h_from_latent(self, latent_pi_h: th.Tensor) -> Distribution:
+    # Ao's code
+    def _get_action_dist_h_from_latent(self, latent_pi_h: th.Tensor) -> MaskableDistribution:
         """
         Retrieve action distribution given the latent codes.
 
         :param latent_pi: Latent code for the actor
         :return: Action distribution
         """
-        mean_actions = self.action_net_h(latent_pi_h)
-
-        if isinstance(self.action_dist_h, DiagGaussianDistribution):
-            return self.action_dist_h.proba_distribution(mean_actions, self.log_std_h)
-        elif isinstance(self.action_dist_h, CategoricalDistribution):
-            # Here mean_actions are the logits before the softmax
-            return self.action_dist_h.proba_distribution(action_logits=mean_actions)
-        elif isinstance(self.action_dist_h, MultiCategoricalDistribution):
-            # Here mean_actions are the flattened logits
-            return self.action_dist_h.proba_distribution(action_logits=mean_actions)
-        elif isinstance(self.action_dist_h, BernoulliDistribution):
-            # Here mean_actions are the logits (before rounding to get the binary actions)
-            return self.action_dist_h.proba_distribution(action_logits=mean_actions)
-        elif isinstance(self.action_dist_h, StateDependentNoiseDistribution):
-            return self.action_dist_h.proba_distribution(mean_actions, self.log_std_h, latent_pi_h)
-        else:
-            raise ValueError("Invalid action distribution")
+        action_logits = self.action_net_h(latent_pi_h)
+        return self.action_dist_h.proba_distribution(action_logits=action_logits)
 
     def _get_action_dist_l_from_latent(self, latent_pi_l: th.Tensor) -> Distribution:
         """
@@ -533,7 +416,7 @@ class HybridActorCriticPolicy(BasePolicy):
         else:
             raise ValueError("Invalid action distribution")
 
-    def _predict(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
+    def _predict(self, observation: th.Tensor, deterministic: bool = False, action_masks: Optional[np.ndarray]=None) -> th.Tensor:
         """
         Get the action according to the policy for a given observation.
 
@@ -542,9 +425,9 @@ class HybridActorCriticPolicy(BasePolicy):
         :return: Taken action according to the policy
         """
         # return self.get_distribution(observation).get_actions(deterministic=deterministic)
-        return self.get_distribution(observation)[0].get_actions(deterministic=deterministic), self.get_distribution(observation)[1].get_actions(deterministic=deterministic)
+        return self.get_distribution(observation, action_masks)[0].get_actions(deterministic=deterministic), self.get_distribution(observation)[1].get_actions(deterministic=deterministic)
 
-    def evaluate_actions(self, obs: th.Tensor, actions: th.Tensor) -> Tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]:
+    def evaluate_actions(self, obs: th.Tensor, actions: th.Tensor, action_masks: Optional[np.ndarray] = None) -> Tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]:
         """
         Evaluate actions according to the current policy,
         given the observations.
@@ -558,6 +441,8 @@ class HybridActorCriticPolicy(BasePolicy):
         features = self.extract_features(obs)
         latent_pi_h, latent_pi_l, latent_vf = self.mlp_extractor(features)
         distribution_h = self._get_action_dist_h_from_latent(latent_pi_h)
+        if action_masks is not None:
+            distribution_h.apply_masking(action_masks)
         distribution_l = self._get_action_dist_l_from_latent(latent_pi_l)
         log_prob_h = distribution_h.log_prob(actions[0])
         log_prob_l = distribution_l.log_prob(actions[1])
@@ -566,7 +451,8 @@ class HybridActorCriticPolicy(BasePolicy):
         entropy_l = distribution_l.entropy()
         return values, log_prob_h, log_prob_l, entropy_h, entropy_l
 
-    def get_distribution(self, obs: th.Tensor) -> Distribution:
+    # Ao's code
+    def get_distribution(self, obs: th.Tensor, action_masks: Optional[np.ndarray] = None) -> Tuple[MaskableDistribution, Distribution]:
         """
         Get the current policy distribution given the observations.
 
@@ -575,7 +461,11 @@ class HybridActorCriticPolicy(BasePolicy):
         """
         features = self.extract_features(obs)
         latent_pi_h, latent_pi_l = self.mlp_extractor.forward_actor(features)
-        return self._get_action_dist_h_from_latent(latent_pi_h), self._get_action_dist_l_from_latent(latent_pi_l)
+        distribution_h = self._get_action_dist_h_from_latent(latent_pi_h)
+        distribution_l = self._get_action_dist_l_from_latent(latent_pi_l)
+        if action_masks is not None:
+            distribution_h = distribution_h.apply_masking(action_masks)
+        return distribution_h, distribution_l
 
     def predict_values(self, obs: th.Tensor) -> th.Tensor:
         """
@@ -594,6 +484,7 @@ class HybridActorCriticPolicy(BasePolicy):
         state: Optional[Tuple[np.ndarray, ...]] = None,
         episode_start: Optional[np.ndarray] = None,
         deterministic: bool = False,
+        action_masks: Optional[np.ndarray] = None, # Ao's code
     ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
         """
         Get the policy action from an observation (and optional hidden state).
@@ -605,6 +496,7 @@ class HybridActorCriticPolicy(BasePolicy):
             this correspond to beginning of episodes,
             where the hidden states of the RNN must be reset.
         :param deterministic: Whether or not to return deterministic actions.
+        :param action_masks: Action masks to apply to the action distribution
         :return: the model's action and the next hidden state
             (used in recurrent policies)
         """
@@ -618,7 +510,7 @@ class HybridActorCriticPolicy(BasePolicy):
 
         observation, vectorized_env = self.obs_to_tensor(observation)
         with th.no_grad():
-            actions = self._predict(observation, deterministic=deterministic)
+            actions = self._predict(observation, deterministic=deterministic, action_masks=action_masks)
 
         # Convert to numpy, and reshape to the original action shape
         actions_h = actions[0].item()
