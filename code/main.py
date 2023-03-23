@@ -1,50 +1,68 @@
 import time
+import os
 import warnings
 warnings.filterwarnings("ignore")
 
 import sys
 sys.path.append('HybridPPO')
 
-from HybridPPO.hybridppo import *
+# from HybridPPO.hybridppo import *
 from BusBunchingEnv import Env
+
+import gym
+from gym import spaces
+from stable_baselines3 import PPO, DQN
+from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.evaluation import evaluate_policy
 
 
 if __name__ == '__main__':
 
     # env = gym.make('Moving-v0')
-    env = Env()
-    print(env.action_space)
     # if recording
     # env = gym.wrappers.Monitor(env, "./video", force=True)
     # env.metadata["render.modes"] = ["human", "rgb_array"]
     
-    env.reset()
+    # env.reset()
 
     # ACTION_SPACE = env.action_space[0].n
     # PARAMETERS_SPACE = env.action_space[1].shape[0]
     # OBSERVATION_SPACE = env.observation_space.shape[0]
+    
 
-    model = HybridPPO("HybridPolicy", 
+    mode = 'waiting_time'
+    holding_only = True
+    config = {"holding_only": holding_only, "mode": mode}
+    env = Env(config)
+
+    model_dir = f"models/PPO{mode}"
+    logdir = "logs"
+
+    if not os.path.exists(logdir):
+        os.makedirs(logdir)
+
+    model = PPO("MlpPolicy", 
                     env, 
                     verbose=1, 
-                    batch_size=64, 
-                    tensorboard_log="./results/busbunching/",
-                    learning_rate=0.00025,)
+                    batch_size=128, 
+                    tensorboard_log=logdir,
+                    learning_rate=0.001,
+                    gamma=0.99)
 
-    model.learn(total_timesteps=1000000)
-    # model.save("./results/moving_env")
+    model.learn(total_timesteps=300000)
+    model.save(f"model_dir/{mode}")
 
-    # del model # remove to demonstrate saving and loading
+    del model # remove to demonstrate saving and loading
 
-    # model = HybridPPO.load("results/model")
+    model = PPO.load(f"model_dir/{mode}")
 
-    # obs = env.reset()
-    # while True:
-    #     action, _ = model.predict(obs)
-    #     obs, rewards, dones, info = env.step(action)
-    #     # if rendering
-    #     env.render()
-    #     time.sleep(0.1)
+    obs = env.reset()
+    while True:
+        action = (0, 0)
+        obs, rewards, dones, info = env.step(action)
+        # if rendering
+        time.sleep(0.1)
 
-    # time.sleep(1)
-    # env.close()
+    time.sleep(1)
+    env.close()
