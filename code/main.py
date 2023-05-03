@@ -32,7 +32,7 @@ if __name__ == '__main__':
     
 
     mode = 'waiting_time'
-    holding_only = True
+    holding_only = False
     config = {"holding_only": holding_only, "mode": mode}
     env = Env(config)
 
@@ -48,21 +48,22 @@ if __name__ == '__main__':
                     batch_size=128, 
                     tensorboard_log=logdir,
                     learning_rate=0.001,
-                    gamma=0.99)
+                    gamma=0.99,
+                    device='cuda')
 
     model.learn(total_timesteps=300000)
     model.save(f"model_dir/{mode}")
 
     del model # remove to demonstrate saving and loading
 
-    model = PPO.load(f"model_dir/{mode}")
+    # model = PPO.load(f"model_dir/{mode}")
 
-    obs = env.reset()
-    while True:
-        action = (0, 0)
-        obs, rewards, dones, info = env.step(action)
-        # if rendering
-        time.sleep(0.1)
+    # obs = env.reset()
+    # while True:
+    #     action = (0, 0)
+    #     obs, rewards, dones, info = env.step(action)
+    #     # if rendering
+    #     time.sleep(0.1)
 
-    time.sleep(1)
-    env.close()
+    # time.sleep(1)
+    # env.close()
