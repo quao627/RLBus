@@ -16,6 +16,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
 
+from HybridPPO.hybridppo import HybridPPO
 
 if __name__ == '__main__':
 
@@ -34,7 +35,10 @@ if __name__ == '__main__':
     mode = 'waiting_time'
     holding_only = False
     config = {"holding_only": holding_only, "mode": mode}
-    env = Env(config)
+    env = Env(**{'holding_only': False, 
+                 'skipping_only': True, 
+                 'turning_only': False,
+                 'mode': 'waiting_time_station'})
 
     model_dir = f"models/PPO{mode}"
     logdir = "logs"
@@ -47,9 +51,8 @@ if __name__ == '__main__':
                     verbose=1, 
                     batch_size=128, 
                     tensorboard_log=logdir,
-                    learning_rate=0.001,
-                    gamma=0.99,
-                    device='cuda')
+                    learning_rate=0.01,
+                    gamma=0.99,)
 
     model.learn(total_timesteps=300000)
     model.save(f"model_dir/{mode}")

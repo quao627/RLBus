@@ -2,6 +2,7 @@ from typing import List, Dict, Union
 from dataclasses import dataclass
 import pickle
 import json
+import time
 import random
 from itertools import chain
 
@@ -33,6 +34,7 @@ Todos (RL):
 '''
 
 
+pax_data = {bus_id : [] for bus_id in range(N_BUS)}
 # event_buffer = {bus_id: {'ready': False, 'events': []} for bus_id in range(N_BUS)}
 
 class Bus:
@@ -65,6 +67,7 @@ class Bus:
         self.env.departure_times.append(self.starting_time)
         yield self.simpy_env.timeout(self.starting_time)
         self.env.data[self.cur_station.idx].append(self.simpy_env.now)
+        pax_data[self.idx].append(self.num_pax)
 
         # each cycle is a trip from one station to the next
         while True:
@@ -78,6 +81,7 @@ class Bus:
                     yield self.simpy_env.timeout(self.env.departure_times[-2] + HEADWAY - self.simpy_env.now)
             
             self.env.data[self.next_station.idx].append(self.simpy_env.now)
+            pax_data[self.idx].append(self.num_pax)
 
             # if self.next_station.idx == 0:
             #     print(f'Bus {self.idx} starts at {self.simpy_env.now}')
@@ -236,6 +240,7 @@ class Bus:
                 
         station.last_arrival_time = self.simpy_env.now
         station.passengers = passengers
+        self.env.num_board_pax += n
         return n
 
     def update_state(self, h_action):
@@ -321,7 +326,7 @@ class Station:
         return len([pax for pax in self.passengers if pax.start_time < t])
 
 class Env(gym.Env):
-    def __init__(self, holding_only=True, mode='headway') -> None:
+    def __init__(self, holding_only=True, skipping_only=False, turning_only=False, mode='headway') -> None:
         self.travel_times = TABLE_TRAVEL_TIME
         self.pax_alight = PAX_ALIGHT_TABLE
         self.pax_board = PAX_ARRIVE_TABLE
@@ -330,6 +335,7 @@ class Env(gym.Env):
         self.action = None
         self.departure_times = []
         self.passengers = []
+        self.num_board_pax = 0
         self.acting_bus = None
         self.allow_skipping = False
         self.allow_turning_around = False
@@ -345,6 +351,8 @@ class Env(gym.Env):
 
         self.mode = mode
         self.holding_only = holding_only
+        self.skipping_only = skipping_only
+        self.turning_only = turning_only
 
         # run simulation until the first event
         while not self.ready:
@@ -354,6 +362,10 @@ class Env(gym.Env):
         self.observation_space = Box(low=-1e4, high=1e4, shape=(N_BUS, 8))
         if holding_only:
             self.action_space = Box(low=0, high=1, shape=(1,))
+        elif skipping_only:
+            self.action_space = Discrete(2)
+        elif turning_only:
+            self.action_space = Discrete(2)
         else:
             self.h_action_space = Discrete(3)
             self.l_action_space = Box(low=0, high=1, shape=(2,))
@@ -407,6 +419,13 @@ class Env(gym.Env):
     def step(self, action):
         if self.holding_only:
             action = (0, (action, 0))
+        elif self.skipping_only:
+            action = (action, (0, 0))
+        elif self.turning_only:
+            if action:
+                action = (2, (0, 0))
+            else:
+                action = (0, (0, 0))
         self.action = action
         while not self.ready:
             self.env.step()
@@ -418,11 +437,11 @@ class Env(gym.Env):
         self.last_timestep = self.env.now
 
         obs = self.get_observation()
-        rewards = self.get_reward(mode=self.mode, obs=obs[:, 2].flatten())
+        rewards = self.get_reward(obs=obs[:, 2].flatten())
         done = self.env.peek() >= HORIZON - 2000
-        info = {'timestep': timestep}
+        info = {'timestep': float(timestep)}
         
-        return obs, rewards, done, info
+        return obs, float(rewards), bool(done), info
 
     def update_pax(self):
         for station in self.stations:
@@ -489,7 +508,7 @@ class Env(gym.Env):
         return obs
 
 
-    def get_reward(self, obs=None, mode='headway'):
+    def get_reward(self, obs=None):
         alpha, beta = 1, 1
         waiting_time = 0
         on_bus_time = 0
@@ -511,8 +530,14 @@ class Env(gym.Env):
         reward = alpha * waiting_time / max(1, n_waiting_pax) + beta * on_bus_time / max(1, n_on_bus_pax)
         self.acc_waiting_time += waiting_time
         self.acc_on_bus_time += on_bus_time
-        if mode == 'waiting_time':
+        if self.mode == 'waiting_time_total':
             return (- waiting_time - on_bus_time) / 1e6
+        elif self.mode == 'waiting_time_station':
+            return - waiting_time / 1e6
+        elif self.mode == 'num_pax':
+            reward = self.num_board_pax
+            self.num_board_pax = 0
+            return reward
         else: 
             reward = -obs.std() ** 2
             return reward
@@ -533,21 +558,18 @@ class Passenger:
 
 
 if __name__ == '__main__':
-    env = Env({'holding_only': True})
+    env = Env(**{'holding_only': False, 'skipping_only': False, 'turning_only': True, 'mode': 'waiting_time_station'})
     env.reset()
+    print(env.mode)
     action = (0, (0, 0))
     total_reward = 0
     cnt = 0
+    print(time.time())
     while env.env.peek() < HORIZON - 2000:
-        action = 0
+        action = 1
         obs, rew, done, info = env.step(action)
-        print(obs.shape)
-        r = random.random()
         total_reward += rew
-        # if cnt < 10:
-        #     print('Station obs: ', [station.get_num_pax() for station in env.stations])
-        #     print('Bus obs: ', [(bus.num_pax, bus.get_observation()['location']) for bus in env.buses])
-        #     cnt += 1
+        cnt += 1
         # if r < 0.1 and env.allow_skipping:
         #     action = (1, 0)
         # elif r < 0.2:
@@ -558,10 +580,11 @@ if __name__ == '__main__':
         # action = (1, (0, 0)) if env.allow_skipping else (0, (0, 0))
         # action = (0, (0, 0))
         # print(f'Current time: {env.env.now}')
-    pickle.dump(env.data, open('data.pkl', 'wb'))
-    print(env.departure_times)
+    # pickle.dump(env.data, open('data.pkl', 'wb'))
+    # pickle.dump(pax_data, open('pax_data.pkl', 'wb'))
+    print(time.time())
     print('Total waiting time: ', env.acc_waiting_time)
     print('Total on bus time: ', env.acc_on_bus_time)
-    print('stops allowde to skip: ', num_skipping_stop, ' ', num_total_stop)
+    print('stops allowed to skip: ', num_skipping_stop, ' ', num_total_stop)
     print('Total reward: ', total_reward)
-
+    print('Cnt: ', cnt)

@@ -6,13 +6,13 @@ seed=0
 np.random.seed(seed)
 
 # number of bus
-N_BUS = 18
+N_BUS = 7
 
 # feature dimension
 FEATURE_DIM = 2
 
 # capacity of bus
-CAPACITY = 120
+CAPACITY = 60
 
 # planned headway
 HEADWAY = 6 * 60
@@ -27,7 +27,7 @@ STATION_DIST = 1 # km
 MAX_WAITING_TIME = 30 * 60
 
 # number of stations
-N_STATION = 20
+N_STATION = 10
 
 # time HORIZON
 HORIZON = 6 * 60 * 60 # 3 hours
