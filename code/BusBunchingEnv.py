@@ -138,6 +138,7 @@ class Bus:
             # 1 means skipping
             elif h_action == 1:
                 yield self.simpy_env.timeout(0)
+                self.alight_pax(self.next_station)
                 self.update_state(h_action)
                 #print(f'Bus {self.idx} skips station {self.cur_station.idx}')
 
@@ -558,7 +559,7 @@ class Passenger:
 
 
 if __name__ == '__main__':
-    env = Env(**{'holding_only': False, 'skipping_only': False, 'turning_only': True, 'mode': 'waiting_time_station'})
+    env = Env(**{'holding_only': False, 'skipping_only': True, 'turning_only': False, 'mode': 'waiting_time_station'})
     env.reset()
     print(env.mode)
     action = (0, (0, 0))
@@ -566,7 +567,7 @@ if __name__ == '__main__':
     cnt = 0
     print(time.time())
     while env.env.peek() < HORIZON - 2000:
-        action = 1
+        action = random.randint(0, 1)
         obs, rew, done, info = env.step(action)
         total_reward += rew
         cnt += 1
