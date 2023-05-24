@@ -567,7 +567,7 @@ if __name__ == '__main__':
     cnt = 0
     print(time.time())
     while env.env.peek() < HORIZON - 2000:
-        action = 0
+        action = random.randint(0, 1)
         obs, rew, done, info = env.step(action)
         total_reward += rew
         cnt += 1

@@ -15,7 +15,7 @@ FEATURE_DIM = 2
 CAPACITY = 60
 
 # planned headway
-HEADWAY = 3 * 60
+HEADWAY = 2 * 60
 
 # Threshold for low-level action
 THRESHOLD = 3 * 60

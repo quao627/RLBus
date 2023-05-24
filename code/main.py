@@ -1,13 +1,12 @@
 import time
 import os
+import argparse
 import warnings
 warnings.filterwarnings("ignore")
 
 import sys
 sys.path.append('HybridPPO')
 
-# from HybridPPO.hybridppo import *
-from BusBunchingEnv import Env
 
 import gym
 from gym import spaces
@@ -15,10 +14,60 @@ from stable_baselines3 import PPO, DQN
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
-
 from HybridPPO.hybridppo import HybridPPO
 
+# from HybridPPO.hybridppo import *
+from BusBunchingEnv import Env
+
+
+def train(args):
+
+    assert args.holding_only + args.skipping_only + args.turning_only <= 1, "Only one of the three can be true"
+
+    config = {'holding_only': args.holding_only,
+                'skipping_only': args.skipping_only, 
+                'turning_only': args.turning_only,
+                'mode': args.mode}
+    env = Env(**config)
+
+    model_dir = args.model_dir + args.mode
+    logdir = args.log_dir
+
+    if not os.path.exists(logdir):
+        os.makedirs(logdir)
+
+    model = PPO("MlpPolicy", 
+                    env, 
+                    verbose=1, 
+                    batch_size=args.batch_size, 
+                    tensorboard_log=logdir,
+                    learning_rate=args.learning_rate,
+                    gamma=args.batch_size,)
+
+    model.learn(total_timesteps=args.num_steps, tb_log_name="ppo")
+    model.save(model_dir)
+
+    return model
+
+
 if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--mode", type=str, default="waiting_time_station", help="waiting_time_total, waiting_time_station, num_pax")
+    parser.add_argument("--holding_only", type="store_true", default=False, help="only holding")
+    parser.add_argument("--skipping_only", type="store_true", default=False, help="only skipping")
+    parser.add_argument("--turning_only", type="store_true", default=False, help="only turning")
+    parser.add_argument("--model_dir", type=str, default="models/PPO", help="model directory")
+    parser.add_argument("--log_dir", type=str, default="logs", help="log directory")
+    parser.add_argument("--learning_rate", type=float, default=0.01, help="learning rate")
+    parser.add_argument("--batch_size", type=int, default=128, help="batch size")
+    parser.add_argument("--num_steps", type=int, default=300000, help="number of steps")
+    parser.add_argument("--gamma", type=float, default=0.99, help="discount factor")
+
+    args = parser.parse_args()
+
+    train()
 
     # env = gym.make('Moving-v0')
     # if recording
@@ -30,35 +79,6 @@ if __name__ == '__main__':
     # ACTION_SPACE = env.action_space[0].n
     # PARAMETERS_SPACE = env.action_space[1].shape[0]
     # OBSERVATION_SPACE = env.observation_space.shape[0]
-    
-
-    mode = 'waiting_time'
-    holding_only = False
-    skipping_only = True
-    config = {"holding_only": holding_only, "mode": mode}
-    env = Env(**{'holding_only': False, 
-                 'skipping_only': True, 
-                 'turning_only': False,
-                 'mode': 'waiting_time_station'})
-
-    model_dir = f"models/PPO{mode}"
-    logdir = "logs"
-
-    if not os.path.exists(logdir):
-        os.makedirs(logdir)
-
-    model = PPO("MlpPolicy", 
-                    env, 
-                    verbose=1, 
-                    batch_size=128, 
-                    tensorboard_log=logdir,
-                    learning_rate=0.01,
-                    gamma=0.99,)
-
-    model.learn(total_timesteps=300000)
-    model.save(f"model_dir/{mode}")
-
-    del model # remove to demonstrate saving and loading
 
     # model = PPO.load(f"model_dir/{mode}")
 
