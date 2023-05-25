@@ -50,14 +50,15 @@ def train(args):
     return model
 
 
-if __name__ == '__main__':
 
+if __name__ == '__main__':
+    
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--mode", type=str, default="waiting_time_station", help="waiting_time_total, waiting_time_station, num_pax")
-    parser.add_argument("--holding_only", type="store_true", default=False, help="only holding")
-    parser.add_argument("--skipping_only", type="store_true", default=False, help="only skipping")
-    parser.add_argument("--turning_only", type="store_true", default=False, help="only turning")
+    parser.add_argument("--holding_only", action="store_true", default=False, help="only holding")
+    parser.add_argument("--skipping_only", action="store_true", default=False, help="only skipping")
+    parser.add_argument("--turning_only", action="store_true", default=False, help="only turning")
     parser.add_argument("--model_dir", type=str, default="models/PPO", help="model directory")
     parser.add_argument("--log_dir", type=str, default="logs", help="log directory")
     parser.add_argument("--learning_rate", type=float, default=0.01, help="learning rate")
@@ -68,6 +69,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     train()
+    
+
 
     # env = gym.make('Moving-v0')
     # if recording
