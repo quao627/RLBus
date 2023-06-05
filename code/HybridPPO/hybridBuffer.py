@@ -13,6 +13,7 @@ from HybridPPO.policies import *
 
 
 TensorDict = Dict[Union[str, int], th.Tensor]
+
 class HybridRolloutBufferSamples(NamedTuple):
     observations: TensorDict
     actions: spaces.Tuple
@@ -22,6 +23,15 @@ class HybridRolloutBufferSamples(NamedTuple):
     returns: th.Tensor
     timesteps: th.Tensor # Ao's addition
     action_masks: th.Tensor # Ao's addition
+
+class HybridDictRolloutBufferSamples(NamedTuple):
+    observations: TensorDict
+    actions: spaces.Tuple
+    old_values: th.Tensor
+    old_log_prob: spaces.Tuple
+    advantages: th.Tensor
+    returns: th.Tensor
+    timesteps: th.Tensor # Ao's addition
 
 class HybridRolloutBuffer(RolloutBuffer):
     def __init__(
@@ -72,7 +82,6 @@ class HybridRolloutBuffer(RolloutBuffer):
         self.mask_dims = mask_dims
         self.timesteps = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.action_masks = np.ones((self.buffer_size, self.n_envs, mask_dims), dtype=np.float32)
-
         self.generator_ready = False
 
         super(RolloutBuffer, self).reset()
@@ -113,8 +122,11 @@ class HybridRolloutBuffer(RolloutBuffer):
 
         action_h, action_l = action
         self.actions[self.pos,0,0] += action_h.item()
-        self.actions[self.pos,0,1] += np.array(action_l)[0,0]
-        self.actions[self.pos,0,2] += np.array(action_l)[0,1]
+        if isinstance(action_l, th.Tensor):
+            self.actions[self.pos,0,1] += action_l.item()
+        else:
+            self.actions[self.pos,0,1] += np.array(action_l)[0,0]
+            self.actions[self.pos,0,2] += np.array(action_l)[0,1]
         
         # if action_h.item() == 2:
         #     action_l_real = 0
@@ -176,7 +188,6 @@ class HybridRolloutBuffer(RolloutBuffer):
         """
         Post-processing step: compute the lambda-return (TD(lambda) estimate)
         and GAE(lambda) advantage.
-
         :param last_values: state value estimation for the last step (one for each env)
         :param dones: if the last step was a terminal step (one bool for each env).
         """
@@ -194,9 +205,9 @@ class HybridRolloutBuffer(RolloutBuffer):
             # 
             delta = self.rewards[step] + np.exp(-self.gamma * self.timesteps[step]) * next_values * next_non_terminal - self.values[step]
             last_gae_lam = delta + np.exp(-self.gamma * self.timesteps[step]) * self.gae_lambda * next_non_terminal * last_gae_lam
-            # delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
-            # last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
-            
             self.advantages[step] = last_gae_lam
         self.returns = self.advantages + self.values
 
+class HybridDictRolloutBuffer(HybridRolloutBuffer):
+    def __init__():
+        pass
