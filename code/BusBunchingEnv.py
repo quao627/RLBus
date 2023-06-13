@@ -14,6 +14,7 @@ from simpy.events import AnyOf, AllOf, Event
 
 from utils import *
 
+
 num_skipping_stop = 0
 num_total_stop = 0
 
@@ -374,6 +375,7 @@ class Env(gym.Env):
     
         self.reset()
 
+
     def reset(self):
         self.env = simpy.Environment()
         self.passengers = []
@@ -401,7 +403,9 @@ class Env(gym.Env):
         for pax in self.passengers:
             if pax.last_time < self.env.now:
                 pax.last_time = self.env.now
+
         return obs
+
 
     def arange_stations(self) -> None:
         for index, station in enumerate(self.stations):
