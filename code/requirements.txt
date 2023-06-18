@@ -1,0 +1,14 @@
+gym==0.21.0
+matplotlib==3.6.0
+numpy==1.24.2
+pandas==1.5.3
+sb3-contrib==1.6.1
+scipy==1.8.1
+seaborn==0.12.2
+simpy==4.0.1
+stable-baselines3==1.6.2
+tensorboard==2.10.1
+torch==2.0.1
+tqdm==4.65.0
+
+
